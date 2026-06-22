@@ -6,8 +6,8 @@ import { ServiceWorkerManager } from "@/components/ServiceWorkerManager";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Zyt Image - AI 图像生成器",
-  description: "Zyt Image AI 图像生成工作台",
+  title: "知意图 - AI 图像生成工作台",
+  description: "知意图，懂你想法的 AI 图像生成工作台",
   icons: {
     icon: [
       { url: '/favicon.png', type: 'image/png' },

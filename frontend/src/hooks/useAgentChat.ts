@@ -149,6 +149,16 @@ function sliceActiveContext(
   };
 }
 
+function readLocalStorageFlag(key: string, fallback: boolean, enabledValue?: string): boolean {
+  try {
+    if (typeof localStorage === 'undefined' || typeof localStorage.getItem !== 'function') return fallback;
+    const value = localStorage.getItem(key);
+    return enabledValue === undefined ? value !== 'false' : value === enabledValue;
+  } catch {
+    return fallback;
+  }
+}
+
 async function resultImageToBlob(ref: string): Promise<Blob> {
   if (ref.startsWith('URL:')) return fetchImageAsBlob(ref.slice(4));
   if (ref.startsWith('MULTI_URL:')) return fetchImageAsBlob(ref.slice(10).split('|||')[0]);
@@ -176,10 +186,10 @@ export function useAgentChat() {
   const [generationDraft, setGenerationDraft] = useState<AgentGenerationDraft | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(() =>
-    typeof localStorage !== 'undefined' ? localStorage.getItem('nova-agent-web-search') === 'true' : false
+    readLocalStorageFlag('nova-agent-web-search', false, 'true')
   );
   const [intentRecognition, setIntentRecognition] = useState(() =>
-    typeof localStorage !== 'undefined' ? localStorage.getItem('nova-agent-intent-recognition') !== 'false' : true
+    readLocalStorageFlag('nova-agent-intent-recognition', true)
   );
 
   const streamHandleRef = useRef<StreamAgentHandle | null>(null);

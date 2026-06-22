@@ -30,14 +30,6 @@ export function normalizeModelBaseUrl(protocol: ProviderProtocol, baseUrl: strin
     : ensureOpenAiBaseUrl(baseUrl);
 }
 
-export function buildResponsesApiUrl(baseUrl: string): string {
-  return `${ensureOpenAiBaseUrl(baseUrl)}/v1/responses`;
-}
-
-export function buildGeminiStreamGenerateContentUrl(baseUrl: string, modelId: string): string {
-  return `${ensureGoogleBaseUrl(baseUrl)}/v1beta/models/${encodeURIComponent(modelId)}:streamGenerateContent?alt=sse`;
-}
-
 export function getConfiguredTextModel(modelId: string): TextModelConfig | undefined {
   const registry = loadRegistry();
   return getTextModelById(registry, modelId);

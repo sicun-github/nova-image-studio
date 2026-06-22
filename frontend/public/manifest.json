@@ -1,8 +1,8 @@
 {
     "id": "/",
-    "name": "Zyt Image Studio - AI 图像生成器",
-    "short_name": "Zyt Image",
-    "description": "Zyt Image AI 图像生成器",
+    "name": "知意图 - AI 图像生成工作台",
+    "short_name": "知意图",
+    "description": "知意图，懂你想法的 AI 图像生成工作台",
     "start_url": "/",
     "display": "standalone",
     "display_override": ["window-controls-overlay", "standalone"],
@@ -36,14 +36,14 @@
             "sizes": "1280x720",
             "type": "image/png",
             "form_factor": "wide",
-            "label": "Zyt Image 应用主界面"
+            "label": "知意图应用主界面"
         },
         {
             "src": "/screenshot-narrow.png",
             "sizes": "720x1280",
             "type": "image/png",
             "form_factor": "narrow",
-            "label": "Zyt Image 移动端界面"
+            "label": "知意图移动端界面"
         }
     ],
     "edge_side_panel": {

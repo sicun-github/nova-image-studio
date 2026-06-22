@@ -1,15 +1,14 @@
-// 反推提示词的前端直连流式客户端
+// 反推提示词的流式客户端
 // 根据模型分发：
-//   - gpt-5.4-mini          → POST /v1/responses          （OpenAI Responses API + reasoning.high）
-//   - gemini-2.5-flash      → POST /v1beta/.../streamGenerateContent?alt=sse （Google 原生流式）
-// 所有请求直接从浏览器发到外部 API（baseUrl 参数指定），不经过我们自己的服务器。
+//   - OpenAI Response       → POST /api/nova/responses    （同源后端代理，避免 CORS）
+//   - gemini-2.5-flash      → POST /api/nova/gemini-stream（同源后端代理，避免 CORS）
 
 import {
   REVERSE_PROMPT_TEMPLATES,
   type ReversePromptMode,
   type ReversePromptModelId,
 } from '@/lib/reverse-prompt-config';
-import { buildGeminiStreamGenerateContentUrl, buildResponsesApiUrl, getConfiguredTextModel } from '@/lib/model-endpoints';
+import { getConfiguredTextModel } from '@/lib/model-endpoints';
 import { readSseStream } from '@/lib/sse-stream-parser';
 
 export interface StreamReverseInput {
@@ -29,6 +28,51 @@ export interface StreamReverseCallbacks {
 export interface StreamReverseHandle {
   abort(): void;
   promise: Promise<void>;
+}
+
+function requestResponsesApi(
+  baseUrl: string,
+  apiKey: string,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+): Promise<Response> {
+  return fetch('/api/nova/responses', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    },
+    body: JSON.stringify({
+      apiKey,
+      baseUrl,
+      accept: 'text/event-stream',
+      body,
+    }),
+    signal,
+  });
+}
+
+function requestGeminiStreamGenerateContentApi(
+  baseUrl: string,
+  apiKey: string,
+  model: string,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+): Promise<Response> {
+  return fetch('/api/nova/gemini-stream', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    },
+    body: JSON.stringify({
+      apiKey,
+      baseUrl,
+      model,
+      body,
+    }),
+    signal,
+  });
 }
 
 /**
@@ -68,7 +112,7 @@ export function streamReversePrompt(
   };
 }
 
-// ===== OpenAI Responses API（GPT 走 /v1/responses） =====
+// ===== OpenAI Responses API（GPT 走同源后端代理） =====
 
 interface OpenAiResponsesEventEnvelope {
   type?: string;
@@ -100,16 +144,7 @@ async function streamOpenAiResponses(
     ],
   };
 
-  const response = await fetch(buildResponsesApiUrl(baseUrl), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${input.apiKey}`,
-      Accept: 'text/event-stream',
-    },
-    body: JSON.stringify(body),
-    signal,
-  });
+  const response = await requestResponsesApi(baseUrl, input.apiKey, body, signal);
 
   if (!response.ok) {
     throw await readHttpError(response);
@@ -230,18 +265,7 @@ async function streamGeminiGenerateContent(
     },
   };
 
-  const url = buildGeminiStreamGenerateContentUrl(baseUrl, input.model);
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${input.apiKey}`,
-      'x-goog-api-key': input.apiKey,
-      Accept: 'text/event-stream',
-    },
-    body: JSON.stringify(body),
-    signal,
-  });
+  const response = await requestGeminiStreamGenerateContentApi(baseUrl, input.apiKey, input.model, body, signal);
 
   if (!response.ok) {
     throw await readHttpError(response);

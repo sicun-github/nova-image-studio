@@ -324,7 +324,7 @@ export async function exportAllData(onProgress?: ProgressCallback): Promise<Blob
     zip.file('metadata.json', JSON.stringify({
         version: process.env.NEXT_PUBLIC_APP_VERSION || '0.0.0',
         exportDate: new Date().toISOString(),
-        appName: 'Zyt Image',
+        appName: '知意图',
     }, null, 2));
 
     // 添加 localStorage 数据

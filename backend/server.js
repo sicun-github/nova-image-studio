@@ -1,4 +1,5 @@
 const http = require('http');
+const os = require('os');
 const { createHash, randomUUID } = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -84,6 +85,18 @@ function normalizeBaseUrl(url) {
   return String(url || '').trim().replace(/\/+$/, '');
 }
 
+function getLanAccessUrls(port) {
+  const interfaces = os.networkInterfaces();
+  const urls = [];
+  for (const entries of Object.values(interfaces)) {
+    for (const entry of entries || []) {
+      if (entry.family !== 'IPv4' || entry.internal) continue;
+      urls.push(`http://${entry.address}:${port}`);
+    }
+  }
+  return Array.from(new Set(urls));
+}
+
 function normalizeProtocolBaseUrl(protocol, url) {
   const normalized = normalizeBaseUrl(url);
   if (!normalized) return '';
@@ -109,6 +122,7 @@ const DB_PATH = process.env.NOVA_TASK_DB || path.join(__dirname, 'nova-tasks.sql
 const TASK_TTL_MS = 12 * 60 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const MODEL_CHECK_TIMEOUT_MS = 30 * 1000;
 const IMAGE_STREAM_UNSUPPORTED_PATTERN = /(?:stream.*(?:unsupported|not supported|unknown|unrecognized|invalid)|(?:unsupported|not supported|unknown|unrecognized|invalid).*stream|stream.*(?:不支持|未知|无效)|(?:不支持|未知|无效).*stream)/i;
 // 不再硬编码模型列表，由前端通过 protocol 字段指定协议类型
 const VALID_PROTOCOLS = new Set(['google', 'openai']);
@@ -593,6 +607,200 @@ async function proxyResponsesApi(req, res) {
     }
   });
   stream.pipe(res);
+}
+
+function validateGeminiStreamProxyPayload(body) {
+  if (!body || typeof body !== 'object') throw new Error('请求体不能为空');
+  if (typeof body.apiKey !== 'string' || body.apiKey.trim().length === 0) throw new Error('缺少 API 密钥');
+  if (typeof body.baseUrl !== 'string' || body.baseUrl.trim().length === 0) throw new Error('缺少 API 基础地址');
+  if (typeof body.model !== 'string' || body.model.trim().length === 0) throw new Error('缺少模型名称');
+  if (!body.body || typeof body.body !== 'object' || Array.isArray(body.body)) throw new Error('缺少 Gemini 请求体');
+
+  const baseUrl = normalizeProtocolBaseUrl('google', body.baseUrl);
+  if (!baseUrl) throw new Error('缺少 API 基础地址');
+
+  return {
+    apiKey: body.apiKey.trim(),
+    baseUrl,
+    model: body.model.trim(),
+    payload: body.body,
+  };
+}
+
+async function proxyGeminiStreamApi(req, res) {
+  const body = await readJsonBody(req);
+  const { apiKey, baseUrl, model, payload } = validateGeminiStreamProxyPayload(body);
+  const response = await fetchWithTimeout(`${baseUrl}/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+      Authorization: `Bearer ${apiKey}`,
+      Accept: 'text/event-stream',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const contentType = getHeaderValue(response.headers, 'content-type', 'text/event-stream');
+  if (!response.ok || !response.body || !contentType.toLowerCase().includes('text/event-stream')) {
+    const responseText = await response.text().catch(() => '');
+    res.writeHead(response.status, {
+      'Content-Type': contentType,
+      'Cache-Control': 'no-store',
+    });
+    res.end(responseText);
+    return;
+  }
+
+  res.writeHead(response.status, {
+    'Content-Type': contentType,
+    'Cache-Control': 'no-store, no-transform',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+
+  const stream = Readable.fromWeb(response.body);
+  stream.on('error', error => {
+    console.warn('[gemini-stream-proxy] 上游流读取失败:', error?.message || error);
+    if (!res.headersSent) {
+      res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'Gemini API 流式响应读取失败' }));
+    } else {
+      res.destroy(error);
+    }
+  });
+  stream.pipe(res);
+}
+
+function validateModelCheckPayload(body) {
+  if (!body || typeof body !== 'object') throw new Error('请求体不能为空');
+  if (!Array.isArray(body.models)) throw new Error('缺少模型配置列表');
+  if (body.models.length > 100) throw new Error('一次最多检查 100 个模型');
+
+  return body.models.map(model => {
+    if (!model || typeof model !== 'object') throw new Error('模型配置无效');
+    const protocol = model.protocol;
+    if (!VALID_PROTOCOLS.has(protocol)) throw new Error('协议类型无效，必须为 google 或 openai');
+    const id = typeof model.id === 'string' ? model.id.trim() : '';
+    const name = typeof model.name === 'string' ? model.name.trim() : id;
+    const apiKey = typeof model.apiKey === 'string' ? model.apiKey.trim() : '';
+    const modelId = typeof model.modelId === 'string' ? model.modelId.trim() : '';
+    const baseUrl = typeof model.baseUrl === 'string'
+      ? normalizeProtocolBaseUrl(protocol, model.baseUrl)
+      : '';
+    return {
+      id,
+      name,
+      protocol,
+      baseUrl,
+      apiKey,
+      modelId,
+      isImage: model.isImage === true,
+    };
+  });
+}
+
+function getModelCheckErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function checkSingleModelAvailability(model) {
+  if (!model.id || !model.baseUrl || !model.apiKey || !model.modelId) {
+    return {
+      modelId: model.id,
+      actualName: model.name,
+      available: false,
+      message: '模型配置不完整',
+    };
+  }
+
+  if (model.isImage) {
+    const listUrl = model.protocol === 'google'
+      ? `${model.baseUrl}/v1beta/models`
+      : `${model.baseUrl}/v1/models`;
+    const response = await fetchWithTimeout(listUrl, {
+      method: 'GET',
+      headers: model.protocol === 'google'
+        ? {
+            'x-goog-api-key': model.apiKey,
+            Authorization: `Bearer ${model.apiKey}`,
+          }
+        : {
+            Authorization: `Bearer ${model.apiKey}`,
+          },
+    }, MODEL_CHECK_TIMEOUT_MS);
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      return {
+        modelId: model.id,
+        actualName: model.name,
+        available: false,
+        message: `${response.status}${detail ? ` ${detail.slice(0, 120)}` : ''}`,
+      };
+    }
+
+    const data = await response.json().catch(() => ({}));
+    const exists = model.protocol === 'google'
+      ? Array.isArray(data.models) && data.models.some(item => String(item?.name || '').includes(model.modelId))
+      : Array.isArray(data.data) && data.data.some(item => String(item?.id || item?.model || '') === model.modelId);
+    return {
+      modelId: model.id,
+      actualName: model.name,
+      available: exists,
+      message: exists ? model.modelId : `未在 /models 中找到 ${model.modelId}`,
+    };
+  }
+
+  const response = await fetchWithTimeout(`${model.baseUrl}/v1/responses`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${model.apiKey}`,
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({
+      model: model.modelId,
+      stream: false,
+      input: 'hi',
+      max_output_tokens: 4,
+    }),
+  }, MODEL_CHECK_TIMEOUT_MS);
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    return {
+      modelId: model.id,
+      actualName: model.name,
+      available: false,
+      message: `${response.status}${detail ? ` ${detail.slice(0, 120)}` : ''}`,
+    };
+  }
+
+  return {
+    modelId: model.id,
+    actualName: model.name,
+    available: true,
+    message: '文本响应正常',
+  };
+}
+
+async function checkModelsAvailabilityProxy(req, res) {
+  const body = await readJsonBody(req);
+  const models = validateModelCheckPayload(body);
+  const results = await Promise.all(models.map(async model => {
+    try {
+      return await checkSingleModelAvailability(model);
+    } catch (error) {
+      return {
+        modelId: model.id,
+        actualName: model.name,
+        available: false,
+        message: getModelCheckErrorMessage(error),
+      };
+    }
+  }));
+  sendJson(res, 200, results);
 }
 
 function serveStatic(req, res, pathname) {
@@ -1134,9 +1342,9 @@ try {
   console.warn('[network] undici Agent 配置失败，使用默认设置:', e?.message || e);
 }
 
-async function fetchWithTimeout(url, init) {
+async function fetchWithTimeout(url, init, timeoutMs = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } finally {
@@ -1605,6 +1813,16 @@ async function handleApi(req, res, pathname) {
       return true;
     }
 
+    if (req.method === 'POST' && apiPathname === '/api/nova/gemini-stream') {
+      await proxyGeminiStreamApi(req, res);
+      return true;
+    }
+
+    if (req.method === 'POST' && apiPathname === '/api/nova/models/check') {
+      await checkModelsAvailabilityProxy(req, res);
+      return true;
+    }
+
     const imageMatch = apiPathname.match(/^\/api\/nova\/images\/([^/]+)\/(\d+)$/);
     if (req.method === 'GET' && imageMatch) {
       const taskId = imageMatch[1];
@@ -1742,9 +1960,12 @@ const startServer = () => {
   httpServer.listen(PORT, HOSTNAME, () => {
     const localUrl = `http://localhost:${PORT}`;
     const listenUrl = `http://${HOSTNAME}:${PORT}`;
-    console.log(`Zyt Image server ready on ${localUrl}`);
+    console.log(`知意图服务已启动: ${localUrl}`);
     if (HOSTNAME !== 'localhost' && HOSTNAME !== '127.0.0.1') {
       console.log(`Listening on ${listenUrl}`);
+      for (const lanUrl of getLanAccessUrls(PORT)) {
+        console.log(`Network: ${lanUrl}`);
+      }
     }
   });
 };

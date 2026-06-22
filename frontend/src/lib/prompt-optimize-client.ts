@@ -1,5 +1,5 @@
 // 提示词优化流式客户端
-// 复用外部 API /v1/responses 端点（baseUrl 参数指定），根据模式附带不同 system prompt。
+// 复用同源后端 /api/nova/responses 代理，根据模式附带不同 system prompt。
 // 图生图/动图模式会将参考图作为 input_image 一并发送（单次请求完成）。
 
 import { readSseStream } from '@/lib/sse-stream-parser';
@@ -35,6 +35,28 @@ export interface StreamPromptOptimizeCallbacks {
 export interface StreamPromptOptimizeHandle {
   abort(): void;
   promise: Promise<void>;
+}
+
+function requestResponsesApi(
+  baseUrl: string,
+  apiKey: string,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+): Promise<Response> {
+  return fetch('/api/nova/responses', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    },
+    body: JSON.stringify({
+      apiKey,
+      baseUrl,
+      accept: 'text/event-stream',
+      body,
+    }),
+    signal,
+  });
 }
 
 // ===== System Prompts =====
@@ -230,16 +252,7 @@ async function runAttempt(
   }, OPTIMIZE_TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${baseUrl}/v1/responses`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${input.apiKey}`,
-        Accept: 'text/event-stream',
-      },
-      body: JSON.stringify(body),
-      signal,
-    });
+    const response = await requestResponsesApi(baseUrl, input.apiKey, body, signal);
 
     if (!response.ok) {
       throw await readHttpError(response);

@@ -20,6 +20,26 @@ export interface GenerateAssetMetadataInput {
   currentNote: string;
 }
 
+function requestResponsesApi(
+  baseUrl: string,
+  apiKey: string,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  return fetch('/api/nova/responses', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({
+      apiKey,
+      baseUrl,
+      accept: 'application/json',
+      body,
+    }),
+  });
+}
+
 function extractOutputText(data: unknown): string {
   if (!data || typeof data !== 'object') return '';
   const record = data as {
@@ -78,14 +98,7 @@ export async function generateAssetMetadata(input: GenerateAssetMetadataInput): 
   };
 
   const baseUrl = input.baseUrl || 'https://api.openai.com';
-  const response = await fetch(`${baseUrl}/v1/responses`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${input.apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
+  const response = await requestResponsesApi(baseUrl, input.apiKey, body);
 
   if (!response.ok) {
     let message = `HTTP ${response.status}`;
