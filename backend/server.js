@@ -2,6 +2,7 @@ const http = require('http');
 const { createHash, randomUUID } = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { Readable } = require('stream');
 const next = require('next');
 const Database = require('better-sqlite3');
 const { WebSocketServer } = require('ws');
@@ -109,7 +110,7 @@ const TASK_TTL_MS = 12 * 60 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const IMAGE_STREAM_UNSUPPORTED_PATTERN = /(?:stream.*(?:unsupported|not supported|unknown|unrecognized|invalid)|(?:unsupported|not supported|unknown|unrecognized|invalid).*stream|stream.*(?:不支持|未知|无效)|(?:不支持|未知|无效).*stream)/i;
-// 开源版：不再硬编码模型列表，由前端通过 protocol 字段指定协议类型
+// 不再硬编码模型列表，由前端通过 protocol 字段指定协议类型
 const VALID_PROTOCOLS = new Set(['google', 'openai']);
 const GPT_IMAGE_QUALITIES = new Set(['auto', 'high', 'medium', 'low']);
 const GPT_IMAGE_STYLES = new Set(['auto', 'vivid', 'natural']);
@@ -126,6 +127,7 @@ const CUSTOM_IMAGE_SIZE_LIMITS = {
   minPixels: 655360,
   maxPixels: 8294400,
 };
+const GPT_IMAGE_MAX_SIDE = 3840;
 const IS_DEV = process.env.NODE_ENV !== 'production';
 const STATIC_DIR = path.join(__dirname, '..', 'frontend', 'out');
 const IMAGE_DIR = process.env.NOVA_IMAGE_DIR || path.join(__dirname, 'nova-images');
@@ -526,6 +528,73 @@ function pipeFileToResponse(res, filePath, statusCode, headers) {
   stream.pipe(res);
 }
 
+function getHeaderValue(headers, name, fallback = '') {
+  const value = headers.get(name);
+  return value && value.trim() ? value : fallback;
+}
+
+function validateResponsesProxyPayload(body) {
+  if (!body || typeof body !== 'object') throw new Error('请求体不能为空');
+  if (typeof body.apiKey !== 'string' || body.apiKey.trim().length === 0) throw new Error('缺少 API 密钥');
+  if (typeof body.baseUrl !== 'string' || body.baseUrl.trim().length === 0) throw new Error('缺少 API 基础地址');
+  if (!body.body || typeof body.body !== 'object' || Array.isArray(body.body)) throw new Error('缺少 Responses 请求体');
+
+  const baseUrl = normalizeProtocolBaseUrl('openai', body.baseUrl);
+  if (!baseUrl) throw new Error('缺少 API 基础地址');
+
+  const accept = body.accept === 'text/event-stream' ? 'text/event-stream' : 'application/json';
+  return {
+    apiKey: body.apiKey.trim(),
+    baseUrl,
+    accept,
+    payload: body.body,
+  };
+}
+
+async function proxyResponsesApi(req, res) {
+  const body = await readJsonBody(req);
+  const { apiKey, baseUrl, accept, payload } = validateResponsesProxyPayload(body);
+  const response = await fetchWithTimeout(`${baseUrl}/v1/responses`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+      Accept: accept,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const contentType = getHeaderValue(response.headers, 'content-type', accept);
+  if (!response.ok || !response.body || !contentType.toLowerCase().includes('text/event-stream')) {
+    const responseText = await response.text().catch(() => '');
+    res.writeHead(response.status, {
+      'Content-Type': contentType,
+      'Cache-Control': 'no-store',
+    });
+    res.end(responseText);
+    return;
+  }
+
+  res.writeHead(response.status, {
+    'Content-Type': contentType,
+    'Cache-Control': 'no-store, no-transform',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+
+  const stream = Readable.fromWeb(response.body);
+  stream.on('error', error => {
+    console.warn('[responses-proxy] 上游流读取失败:', error?.message || error);
+    if (!res.headersSent) {
+      res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'Responses API 流式响应读取失败' }));
+    } else {
+      res.destroy(error);
+    }
+  });
+  stream.pipe(res);
+}
+
 function serveStatic(req, res, pathname) {
   if (!fs.existsSync(STATIC_DIR)) return false;
   let decodedPath;
@@ -640,7 +709,7 @@ function validateCreatePayload(body) {
   if (!Array.isArray(body.images)) body.images = [];
   body.baseUrl = normalizeProtocolBaseUrl(body.protocol, body.baseUrl);
   if (!body.baseUrl) throw new Error('缺少 API 基础地址');
-  // 开源版：不做模型级参数规范化，前端负责传递正确的参数，后端无条件透传
+  // 不做模型级参数规范化，前端负责传递正确的参数，后端无条件透传
 }
 
 function createTask(body, req) {
@@ -780,6 +849,11 @@ function normalizeCustomImageSize(size, maxSide) {
 
 function getSupportedGptImageSize(model, outputSize, aspectRatio) {
   return getGptImageSize(outputSize, aspectRatio);
+}
+
+function resolveGptImageSize(request) {
+  return normalizeCustomImageSize(request.customSize, GPT_IMAGE_MAX_SIDE)
+    || getSupportedGptImageSize(request.model, request.outputSize, request.aspectRatio);
 }
 
 function getGptImageRequestAdvancedParams(request) {
@@ -1071,10 +1145,11 @@ async function fetchWithTimeout(url, init) {
 }
 
 async function generateNovaImage(apiKey, request) {
-  // 开源版：根据前端传入的 protocol 字段路由到对应的 API 协议
+  // 根据前端传入的 protocol 字段路由到对应的 API 协议
   const baseUrl = request.baseUrl || resolveNovaApiBaseUrl();
   if (request.protocol === 'openai') {
-    return requestGptImage(apiKey, request, undefined, { baseUrl });
+    const resolvedSize = resolveGptImageSize(request);
+    return requestGptImage(apiKey, request, resolvedSize, { baseUrl });
   }
   // 默认走 Google Gemini 协议
   return generateNovaGeminiImage(apiKey, request, { baseUrl });
@@ -1525,6 +1600,11 @@ async function handleApi(req, res, pathname) {
       return true;
     }
 
+    if (req.method === 'POST' && apiPathname === '/api/nova/responses') {
+      await proxyResponsesApi(req, res);
+      return true;
+    }
+
     const imageMatch = apiPathname.match(/^\/api\/nova\/images\/([^/]+)\/(\d+)$/);
     if (req.method === 'GET' && imageMatch) {
       const taskId = imageMatch[1];
@@ -1662,7 +1742,7 @@ const startServer = () => {
   httpServer.listen(PORT, HOSTNAME, () => {
     const localUrl = `http://localhost:${PORT}`;
     const listenUrl = `http://${HOSTNAME}:${PORT}`;
-    console.log(`Nova Image server ready on ${localUrl}`);
+    console.log(`Zyt Image server ready on ${localUrl}`);
     if (HOSTNAME !== 'localhost' && HOSTNAME !== '127.0.0.1') {
       console.log(`Listening on ${listenUrl}`);
     }

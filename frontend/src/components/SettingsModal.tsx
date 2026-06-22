@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   Database,
   Download,
-  ExternalLink,
   ImageIcon,
   Info,
   Plus,
@@ -35,6 +34,7 @@ import {
   BUILTIN_IMAGE_PRESET_OPTIONS,
   DEFAULT_DEFAULTS,
   DEFAULT_TEXT_MODEL_TEMPLATES,
+  IMAGE_MODEL_BASE_URL,
   generateModelId,
   getDefaultTextModelTemplate,
   getCompleteImageModels,
@@ -51,8 +51,6 @@ import { syncDynamicModelExports } from '@/lib/gemini-config';
 import { exportAllData, importAllData, downloadBlob, generateBackupFilename, type BackupProgress as BackupProgressType } from '@/lib/backup-utils';
 import { checkModelsAvailability, type ModelStatus } from '@/lib/ccode-task-client';
 import { hasAnyApiKey } from '@/lib/settings-storage';
-import { BA_RANDOM_URL, BING_WALLPAPER_URL } from '@/lib/constants';
-import { PROMPT_DATA_SOURCES, getPromptSourceLabel } from '@/lib/prompt-gallery-data';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -61,7 +59,7 @@ interface SettingsModalProps {
 }
 
 function cloneImageModel(model: ImageModelConfig): ImageModelConfig {
-  return { ...model };
+  return { ...model, baseUrl: IMAGE_MODEL_BASE_URL };
 }
 
 function cloneTextModel(model: TextModelConfig): TextModelConfig {
@@ -76,7 +74,7 @@ function createImageModelDraft(): ImageModelConfig {
     name: '',
     modelId: '',
     apiKey: '',
-    baseUrl: preset.baseUrl,
+    baseUrl: IMAGE_MODEL_BASE_URL,
     builtinPreset: preset.id,
     maxRefImages: preset.maxRefImages,
     maxOutputSize: preset.maxOutputSize,
@@ -131,6 +129,10 @@ function normalizeDefaults(
     promptOptimize: completeTextModels.some((model) => model.id === defaults.promptOptimize) ? defaults.promptOptimize : firstTextModelId,
     imageDescribe: completeTextModels.some((model) => model.id === defaults.imageDescribe) ? defaults.imageDescribe : firstTextModelId,
   };
+}
+
+function normalizeImageModels(models: ImageModelConfig[]): ImageModelConfig[] {
+  return models.map((model) => ({ ...model, baseUrl: IMAGE_MODEL_BASE_URL }));
 }
 
 export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModalProps) {
@@ -199,7 +201,7 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
         next.protocol = preset.protocol;
         next.name = preset.name;
         next.modelId = preset.modelId;
-        next.baseUrl = preset.baseUrl;
+        next.baseUrl = IMAGE_MODEL_BASE_URL;
         next.maxRefImages = preset.maxRefImages;
         next.maxOutputSize = preset.maxOutputSize;
         next.supportsAdvancedParams = preset.supportsAdvancedParams;
@@ -278,10 +280,11 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
       return;
     }
 
+    const normalizedImageModels = normalizeImageModels(imageModels);
     const registry = {
-      imageModels,
+      imageModels: normalizedImageModels,
       textModels,
-      defaults: normalizeDefaults(defaults, imageModels, textModels),
+      defaults: normalizeDefaults(defaults, normalizedImageModels, textModels),
     };
 
     saveRegistry(registry);
@@ -373,7 +376,7 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
             <Settings className="w-5 h-5 text-muted-foreground" />
             <DialogTitle>设置</DialogTitle>
           </div>
-          <DialogDescription>按模型分别配置协议、URL 和 API Key。至少完成一个图片模型和一个文本模型后，外部功能才会解锁。</DialogDescription>
+          <DialogDescription>图片模型使用内置生图网关；文本模型仍可单独配置协议、Base URL 和 API Key。至少完成一个图片模型和一个文本模型后，外部功能才会解锁。</DialogDescription>
         </DialogHeader>
 
         <Tabs defaultValue="models" className="min-h-0 flex-1 gap-0">
@@ -396,7 +399,7 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="space-y-1">
                 <p className="text-sm font-medium">模型级独立配置</p>
-                <p className="text-xs text-muted-foreground">每个模型单独记录协议、Base URL、API Key。外部只显示配置完整的模型。</p>
+                <p className="text-xs text-muted-foreground">图片模型只需填写模型信息和 API Key；文本模型仍保留独立 Base URL。外部只显示配置完整的模型。</p>
               </div>
               <Button onClick={persistRegistry} className="gap-2">
                 <Save className="w-4 h-4" />
@@ -462,10 +465,6 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
                     <div className="space-y-2">
                       <label className="text-xs text-muted-foreground">模型 ID</label>
                       <Input value={selectedImageModel.modelId} onChange={(event) => handleUpdateImageModel(selectedImageModel.id, { modelId: event.target.value })} />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs text-muted-foreground">Base URL</label>
-                      <Input value={selectedImageModel.baseUrl} onChange={(event) => handleUpdateImageModel(selectedImageModel.id, { baseUrl: event.target.value })} />
                     </div>
                     <div className="space-y-2">
                       <label className="text-xs text-muted-foreground">API Key</label>
@@ -693,19 +692,7 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
 
           <TabsContent value="about" className="min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4 mt-0">
             <div className="space-y-4 text-sm">
-              <h3 className="text-lg font-medium">Nova Image <span className="text-xs text-muted-foreground font-normal">v{process.env.NEXT_PUBLIC_APP_VERSION}</span></h3>
-              <p className="text-sm text-muted-foreground">
-                项目地址：
-                {' '}
-                <a
-                  href="https://github.com/tianjiangqiji/nova-image-studio"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-primary hover:underline"
-                >
-                  tianjiangqiji/nova-image-studio <ExternalLink className="w-3 h-3" />
-                </a>
-              </p>
+              <h3 className="text-lg font-medium">Zyt Image <span className="text-xs text-muted-foreground font-normal">v{process.env.NEXT_PUBLIC_APP_VERSION}</span></h3>
 
               <details className="group rounded-lg bg-muted/50 p-3">
                 <summary className="flex cursor-pointer select-none items-center gap-2 font-medium">
@@ -722,39 +709,6 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
               <details className="group rounded-lg bg-muted/50 p-3">
                 <summary className="flex cursor-pointer select-none items-center gap-2 font-medium">
                   <span className="text-[10px] opacity-60 transition-transform group-open:rotate-90">▶</span>
-                  数据来源
-                </summary>
-                <ul className="mt-3 list-disc list-inside space-y-2 text-muted-foreground">
-                  <li>
-                    <span className="text-foreground">提示词广场</span> - 提示词来源：
-                    <ul className="mt-1 ml-5 list-disc list-inside space-y-1">
-                      {PROMPT_DATA_SOURCES.map((source) => (
-                        <li key={source.name}>
-                          <a href={source.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
-                            {getPromptSourceLabel(source.sourceUrl)} <ExternalLink className="w-3 h-3" />
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
-                  <li>
-                    <span className="text-foreground">随机图片 · BA人物</span> -{' '}
-                    <a href={BA_RANDOM_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
-                      img.catcdn.cn <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </li>
-                  <li>
-                    <span className="text-foreground">随机图片 · Bing壁纸</span> -{' '}
-                    <a href={BING_WALLPAPER_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
-                      bing.img.run <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </li>
-                </ul>
-              </details>
-
-              <details className="group rounded-lg bg-muted/50 p-3">
-                <summary className="flex cursor-pointer select-none items-center gap-2 font-medium">
-                  <span className="text-[10px] opacity-60 transition-transform group-open:rotate-90">▶</span>
                   隐私条款
                 </summary>
                 <ul className="mt-3 list-disc list-inside space-y-2 text-muted-foreground">
@@ -762,39 +716,6 @@ export function SettingsModal({ isOpen, onClose, onApiKeyChange }: SettingsModal
                   <li>每个模型的 API Key 和 Base URL 仅用于调用你自己配置的上游服务。</li>
                   <li>生图、反推、Agent、提示词优化等功能会把你当前选择的提示词、参考图或对话内容发送到对应模型配置的上游接口。</li>
                   <li>备份文件可能包含模型配置、本地任务记录与图片数据，请自行妥善保管。</li>
-                </ul>
-              </details>
-
-              <details className="group rounded-lg bg-muted/50 p-3">
-                <summary className="flex cursor-pointer select-none items-center gap-2 font-medium">
-                  <span className="text-[10px] opacity-60 transition-transform group-open:rotate-90">▶</span>
-                  参考项目
-                </summary>
-                <ul className="mt-3 list-disc list-inside space-y-2 text-muted-foreground">
-                  <li>
-                    项目仓库：
-                    {' '}
-                    <a href="https://github.com/tianjiangqiji/nova-image-studio" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
-                      tianjiangqiji/nova-image-studio <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </li>
-                  <li>
-                    基于
-                    {' '}
-                    <a href="https://github.com/aaronkwhite/nanobanana-studio-web" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
-                      aaronkwhite/nanobanana-studio-web <ExternalLink className="w-3 h-3" />
-                    </a>
-                    {' '}
-                    修改而来。
-                  </li>
-                  <li>
-                    无限画布工作区参考
-                    {' '}
-                    <a href="https://github.com/basketikun/infinite-canvas" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
-                      basketikun/infinite-canvas <ExternalLink className="w-3 h-3" />
-                    </a>
-                    。
-                  </li>
                 </ul>
               </details>
             </div>

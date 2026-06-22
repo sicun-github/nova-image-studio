@@ -324,7 +324,7 @@ export async function exportAllData(onProgress?: ProgressCallback): Promise<Blob
     zip.file('metadata.json', JSON.stringify({
         version: process.env.NEXT_PUBLIC_APP_VERSION || '0.0.0',
         exportDate: new Date().toISOString(),
-        appName: 'Nova Image',
+        appName: 'Zyt Image',
     }, null, 2));
 
     // 添加 localStorage 数据
@@ -645,5 +645,5 @@ export function generateBackupFilename(): string {
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
     const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
-    return `nova-backup-${dateStr}-${timeStr}.zip`;
+    return `zyt-backup-${dateStr}-${timeStr}.zip`;
 }

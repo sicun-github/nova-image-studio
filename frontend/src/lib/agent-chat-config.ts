@@ -1,6 +1,6 @@
 // Agent 模式的模型、指令、工具 schema 与类型定义
 // 文本对话模型从 nova-models 注册表动态读取，支持 Google 和 OpenAI 两种协议
-// 开源版：不再硬编码模型，由用户在设置中配置
+// 不再硬编码模型，由用户在设置中配置
 
 import type { GptImageBackground, GptImageQuality, GptImageStyle } from '@/lib/model-capabilities';
 

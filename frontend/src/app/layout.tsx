@@ -6,8 +6,8 @@ import { ServiceWorkerManager } from "@/components/ServiceWorkerManager";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Nova Image - AI 图像生成器",
-  description: "Nova Image AI 图像生成工作台",
+  title: "Zyt Image - AI 图像生成器",
+  description: "Zyt Image AI 图像生成工作台",
   icons: {
     icon: [
       { url: '/favicon.png', type: 'image/png' },
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   },
   manifest: '/manifest.json',
   other: {
-    'theme-color': '#1a1a2e',
+    'theme-color': '#875C27',
   },
 };
 

@@ -1,5 +1,5 @@
-// Agent 模式的浏览器直连客户端
-// 文本对话与视觉描述都打外部 API /v1/responses（与反推提示词一致，不经过自有后端）。
+// Agent 模式客户端。
+// 文本对话与视觉描述走同源后端代理，避免浏览器直连兼容端点时触发 CORS。
 // 对话请求带 tools，解析文字 delta 与 function_call 事件；描述请求为非流式一次性取全文。
 
 import {
@@ -11,7 +11,6 @@ import {
   type AgentProposal,
   type AgentActionType,
 } from '@/lib/agent-chat-config';
-import { buildResponsesApiUrl } from '@/lib/model-endpoints';
 import {
   normalizeGptImageBackground,
   normalizeGptImageQuality,
@@ -29,6 +28,29 @@ class AgentRequestTimeoutError extends Error {
     super(`请求超过 ${Math.round(timeoutMs / 1000)} 秒未响应`);
     this.name = 'AgentRequestTimeoutError';
   }
+}
+
+function requestResponsesApi(
+  baseUrl: string,
+  apiKey: string,
+  body: Record<string, unknown>,
+  accept: 'application/json' | 'text/event-stream',
+  signal: AbortSignal,
+): Promise<Response> {
+  return fetch('/api/nova/responses', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: accept,
+    },
+    body: JSON.stringify({
+      apiKey,
+      baseUrl,
+      accept,
+      body,
+    }),
+    signal,
+  });
 }
 
 export interface AgentCatalogEntry {
@@ -223,16 +245,7 @@ async function runAgentStream(
     input: buildInputMessages(input.history),
   };
 
-  const response = await fetch(buildResponsesApiUrl(baseUrl), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${input.apiKey}`,
-      Accept: 'text/event-stream',
-    },
-    body: JSON.stringify(body),
-    signal,
-  });
+  const response = await requestResponsesApi(baseUrl, input.apiKey, body, 'text/event-stream', signal);
 
   if (!response.ok) {
     throw await readHttpError(response);
@@ -384,15 +397,7 @@ async function requestImageDescription(
     ],
   };
 
-  const response = await fetch(buildResponsesApiUrl(baseUrl), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-    signal,
-  });
+  const response = await requestResponsesApi(baseUrl, apiKey, body, 'application/json', signal);
 
   if (!response.ok) {
     throw await readHttpError(response);

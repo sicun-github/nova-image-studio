@@ -59,7 +59,7 @@ export function getReverseModelOptions(textModels: TextModelConfig[]): ReversePr
 
 /**
  * 反推提示词模型选项列表
- * 开源版：显示所有已配置的文字模型
+ * 显示所有已配置的文字模型
  * 注意：这是一个 getter 函数，每次调用都会从注册表读取最新数据
  */
 export function getReversePromptModelOptionsList(): ReversePromptModelOption[] {

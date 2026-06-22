@@ -6,7 +6,10 @@ export type BuiltinImagePresetId =
   | 'gemini-2.5-flash-image'
   | 'gemini-3-pro-image-preview'
   | 'gemini-3.1-flash-image-preview'
-  | 'gpt-image-2';
+  | 'gpt-image-2'
+  | 'gpt-image-2-fast'
+  | 'gpt-image-2-plus'
+  | 'gpt-image-2-pro';
 
 export interface ImageModelConfig {
   id: string;
@@ -58,6 +61,7 @@ export interface NovaModelRegistry {
 }
 
 const REGISTRY_KEY = 'nova-model-registry';
+export const IMAGE_MODEL_BASE_URL = 'http://pro.ccode.vip';
 
 export const BUILTIN_IMAGE_PRESETS: Record<BuiltinImagePresetId, BuiltinImagePreset> = {
   'gemini-2.5-flash-image': {
@@ -65,7 +69,7 @@ export const BUILTIN_IMAGE_PRESETS: Record<BuiltinImagePresetId, BuiltinImagePre
     protocol: 'google',
     name: 'Banana',
     modelId: 'gemini-2.5-flash-image',
-    baseUrl: 'https://generativelanguage.googleapis.com',
+    baseUrl: IMAGE_MODEL_BASE_URL,
     maxRefImages: 3,
     maxOutputSize: '1K',
     supportsAdvancedParams: false,
@@ -75,7 +79,7 @@ export const BUILTIN_IMAGE_PRESETS: Record<BuiltinImagePresetId, BuiltinImagePre
     protocol: 'google',
     name: 'Banana Pro',
     modelId: 'gemini-3-pro-image-preview',
-    baseUrl: 'https://generativelanguage.googleapis.com',
+    baseUrl: IMAGE_MODEL_BASE_URL,
     maxRefImages: 11,
     maxOutputSize: '4K',
     supportsAdvancedParams: false,
@@ -85,7 +89,7 @@ export const BUILTIN_IMAGE_PRESETS: Record<BuiltinImagePresetId, BuiltinImagePre
     protocol: 'google',
     name: 'Banana 2',
     modelId: 'gemini-3.1-flash-image-preview',
-    baseUrl: 'https://generativelanguage.googleapis.com',
+    baseUrl: IMAGE_MODEL_BASE_URL,
     maxRefImages: 14,
     maxOutputSize: '4K',
     supportsAdvancedParams: false,
@@ -95,7 +99,37 @@ export const BUILTIN_IMAGE_PRESETS: Record<BuiltinImagePresetId, BuiltinImagePre
     protocol: 'openai',
     name: 'GPT Image 2',
     modelId: 'gpt-image-2',
-    baseUrl: 'https://api.openai.com',
+    baseUrl: IMAGE_MODEL_BASE_URL,
+    maxRefImages: 16,
+    maxOutputSize: '4K',
+    supportsAdvancedParams: true,
+  },
+  'gpt-image-2-fast': {
+    id: 'gpt-image-2-fast',
+    protocol: 'openai',
+    name: 'GPT Image 2 Fast',
+    modelId: 'gpt-image-2-fast',
+    baseUrl: IMAGE_MODEL_BASE_URL,
+    maxRefImages: 16,
+    maxOutputSize: '4K',
+    supportsAdvancedParams: true,
+  },
+  'gpt-image-2-plus': {
+    id: 'gpt-image-2-plus',
+    protocol: 'openai',
+    name: 'GPT Image 2 Plus',
+    modelId: 'gpt-image-2-plus',
+    baseUrl: IMAGE_MODEL_BASE_URL,
+    maxRefImages: 16,
+    maxOutputSize: '4K',
+    supportsAdvancedParams: true,
+  },
+  'gpt-image-2-pro': {
+    id: 'gpt-image-2-pro',
+    protocol: 'openai',
+    name: 'GPT Image 2 Pro',
+    modelId: 'gpt-image-2-pro',
+    baseUrl: IMAGE_MODEL_BASE_URL,
     maxRefImages: 16,
     maxOutputSize: '4K',
     supportsAdvancedParams: true,
@@ -171,7 +205,7 @@ function normalizeImageModelConfig(raw: Partial<ImageModelConfig>): ImageModelCo
     name: String(raw.name || '').trim(),
     modelId: String(raw.modelId || '').trim(),
     apiKey: String(raw.apiKey || '').trim(),
-    baseUrl: String(raw.baseUrl || preset.baseUrl).trim(),
+    baseUrl: IMAGE_MODEL_BASE_URL,
     builtinPreset: presetId,
     maxRefImages: Number.isFinite(raw.maxRefImages) && Number(raw.maxRefImages) > 0
       ? Math.max(1, Math.floor(Number(raw.maxRefImages)))

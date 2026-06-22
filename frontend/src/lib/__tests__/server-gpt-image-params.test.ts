@@ -11,9 +11,8 @@ const serverSource = fs.readFileSync(
 
 describe('backend GPT Image advanced params forwarding', () => {
   it('does not contain legacy GPT Image SKU gating or token suffix logic', () => {
-    expect(serverSource).not.toContain('gpt-image-2-fast');
-    expect(serverSource).not.toContain('gpt-image-2-plus');
-    expect(serverSource).not.toContain('gpt-image-2-pro');
+    expect(serverSource).not.toMatch(/if\s*\([^)]*gpt-image-2-(?:fast|plus|pro)/);
+    expect(serverSource).not.toMatch(/case\s+['"]gpt-image-2-(?:fast|plus|pro)['"]/);
     expect(serverSource).not.toContain('TOKEN_SUFFIX');
     expect(serverSource).not.toContain('supportsGptImageAdvancedParams(');
   });
@@ -36,5 +35,13 @@ describe('backend GPT Image advanced params forwarding', () => {
     expect(serverSource).toContain("request.mode === 'image-to-image'");
     expect(serverSource).toContain("/v1/images/edits");
     expect(serverSource).toContain("/v1/images/generations");
+  });
+
+  it('resolves and forwards GPT Image size from layout params', () => {
+    expect(serverSource).toContain('function resolveGptImageSize(request)');
+    expect(serverSource).toContain('normalizeCustomImageSize(request.customSize, GPT_IMAGE_MAX_SIDE)');
+    expect(serverSource).toContain('getSupportedGptImageSize(request.model, request.outputSize, request.aspectRatio)');
+    expect(serverSource).toContain('const resolvedSize = resolveGptImageSize(request)');
+    expect(serverSource).toContain('return requestGptImage(apiKey, request, resolvedSize, { baseUrl })');
   });
 });

@@ -14,7 +14,7 @@ export function setStoredApiKey(): boolean {
 }
 
 export function removeStoredApiKey(): void {
-  // 开源版改为模型级别独立存储，不再提供全局 key 写入口。
+  // 模型级别独立存储，不再提供全局 key 写入口。
 }
 
 export const getStoredCcodeKey = getStoredApiKey;
