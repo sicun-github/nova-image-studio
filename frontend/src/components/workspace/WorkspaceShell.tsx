@@ -5,10 +5,8 @@ import { createPortal } from 'react-dom';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { ImageGenerationWorkbench } from '@/components/ImageGenerationWorkbench';
 import { ReversePromptForm } from '@/components/ReversePromptForm';
-import { GifGenerationWorkspace } from '@/components/GifGenerationWorkspace';
 import { AgentChatWorkspace } from '@/components/agent/AgentChatWorkspace';
 import { AssetsWorkspace } from '@/components/assets/AssetsWorkspace';
-import { CanvasWorkspace } from '@/components/canvas/CanvasWorkspace';
 import { PromptGallery } from '@/components/PromptGallery';
 import { SettingsModal } from '@/components/SettingsModal';
 import { MissingApiKeyDialog } from '@/components/MissingApiKeyDialog';
@@ -45,13 +43,15 @@ import {
 import { cn } from '@/lib/utils';
 import { BA_RANDOM_URL, BING_WALLPAPER_URL } from '@/lib/constants';
 
+type WorkspaceTab = 'image-generation' | 'agent' | 'assets' | 'reverse-prompt' | 'prompt-gallery';
+
 export function WorkspaceShell() {
   const queueStatus = useQueueStatus();
   const { wideMode, toggleWideMode } = useWideMode();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [missingApiKeyDialogOpen, setMissingApiKeyDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'image-generation' | 'agent' | 'canvas' | 'assets' | 'reverse-prompt' | 'gif' | 'prompt-gallery'>('agent');
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>('agent');
   const [generationHistoryFilter, setGenerationHistoryFilter] = useState<GenerationHistoryFilter>('all');
   const [generationClearScope, setGenerationClearScope] = useState<HistoryClearScope | null>(null);
   const [referenceDraft, setReferenceDraft] = useState<{ id: number; refImages: RefImageData[] } | null>(null);
@@ -238,7 +238,7 @@ export function WorkspaceShell() {
 
           <Tabs
             value={activeTab}
-            onValueChange={value => setActiveTab(value as typeof activeTab)}
+            onValueChange={value => setActiveTab(value as WorkspaceTab)}
             orientation={wideMode ? 'vertical' : 'horizontal'}
             className={cn(
               wideMode
@@ -268,7 +268,7 @@ export function WorkspaceShell() {
                 </button>
               )}
               <div className={cn(wideMode ? 'flex flex-col py-4 flex-1' : 'flex flex-col py-1')}>
-                <WorkspaceModeTabs wideMode={wideMode} showPromptGallery={promptGallery.showPromptGallery} />
+                <WorkspaceModeTabs wideMode={wideMode} />
               </div>
 
               {wideMode && (
@@ -398,15 +398,6 @@ export function WorkspaceShell() {
                 />
               </TabsContent>
 
-              <TabsContent value="canvas" keepMounted className={cn('min-h-0', wideMode ? 'xl:flex xl:min-h-0 xl:flex-1 xl:flex-col' : 'space-y-6')}>
-                <CanvasWorkspace
-                  wideMode={wideMode}
-                  onConfigureApiKey={() => setSettingsOpen(true)}
-                  onEnableWideMode={() => { if (!wideMode) toggleWideMode(); }}
-                  showToast={showToast}
-                />
-              </TabsContent>
-
               <TabsContent value="assets" keepMounted className={cn(wideMode ? 'space-y-6 xl:min-h-0 xl:min-w-0 xl:flex xl:flex-col' : 'space-y-6')}>
                 <AssetsWorkspace wideMode={wideMode} active={activeTab === 'assets'} />
               </TabsContent>
@@ -419,23 +410,11 @@ export function WorkspaceShell() {
                 />
               </TabsContent>
 
-              <TabsContent value="gif" keepMounted className={cn(wideMode ? 'space-y-6 xl:min-h-0 xl:flex xl:flex-col' : 'space-y-6')}>
-                <GifGenerationWorkspace
-                  wideMode={wideMode}
-                  hasApiKey={workspace.hasApiKey}
-                  onConfigureApiKey={() => setSettingsOpen(true)}
-                  onError={message => showToast(message, 'error')}
-                  showToast={showToast}
-                />
+              <TabsContent value="prompt-gallery" keepMounted>
+                <div className={cn('bg-transparent p-0 shadow-none sm:rounded-2xl sm:bg-card sm:p-4 sm:shadow-sm sm:border sm:border-border', wideMode && 'sm:p-5')}>
+                  <PromptGallery wideMode={wideMode} />
+                </div>
               </TabsContent>
-
-              {promptGallery.showPromptGallery && (
-                <TabsContent value="prompt-gallery" keepMounted>
-                  <div className={cn('bg-transparent p-0 shadow-none sm:rounded-2xl sm:bg-card sm:p-4 sm:shadow-sm sm:border sm:border-border', wideMode && 'sm:p-5')}>
-                    <PromptGallery wideMode={wideMode} />
-                  </div>
-                </TabsContent>
-              )}
             </div>
           </Tabs>
         </div>
