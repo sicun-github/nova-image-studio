@@ -110,6 +110,38 @@ function resolveNovaApiBaseUrl() {
   return normalizeBaseUrl(getRuntimeEnv().NOVA_API_BASE_URL) || 'https://api.openai.com';
 }
 
+function getHostnameFromUrl(url) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '';
+  }
+}
+
+function shouldUseImageProxy(baseUrl) {
+  return getHostnameFromUrl(baseUrl) === 'pro.ccode.vip';
+}
+
+function getImageProxyDispatcher(baseUrl) {
+  if (!shouldUseImageProxy(baseUrl)) return undefined;
+
+  const proxyUrl = normalizeBaseUrl(getRuntimeEnv().NOVA_IMAGE_PROXY_URL);
+  if (!proxyUrl) return undefined;
+
+  if (imageProxyDispatcher && imageProxyDispatcherUrl === proxyUrl) {
+    return imageProxyDispatcher;
+  }
+
+  const { ProxyAgent } = require('undici');
+  imageProxyDispatcher = new ProxyAgent(proxyUrl);
+  imageProxyDispatcherUrl = proxyUrl;
+  if (!imageProxyLogged) {
+    console.log('[image-proxy] pro.ccode.vip 图片请求将通过代理转发');
+    imageProxyLogged = true;
+  }
+  return imageProxyDispatcher;
+}
+
 function hashPromptGalleryPassword(password) {
   return createHash('sha256')
     .update(`${PROMPT_GALLERY_PASSWORD_SALT}${String(password || '')}`)
@@ -156,6 +188,9 @@ const pendingCountByIp = new Map(); // ip -> count
 const pendingCountByApiKeyHash = new Map(); // apiKeyHash -> count
 const queue = [];
 let activeCount = 0;
+let imageProxyDispatcher = null;
+let imageProxyDispatcherUrl = '';
+let imageProxyLogged = false;
 
 // ===== WebSocket subscription state =====
 const taskSubscriptions = new Map(); // WebSocket -> Set<taskId>
@@ -390,6 +425,20 @@ function logGeneratedImagePayload(taskId, itemIndex, subIndex, imagePayload) {
     head: imagePayload.slice(0, 160),
     tail: imagePayload.slice(-160),
   });
+}
+
+function saveImageToDisk(taskId, itemIndex, subIndex, imagePayload) {
+  ensureImageDir();
+  const base64 = imagePayload.startsWith('data:image')
+    ? imagePayload.split(',')[1] || ''
+    : imagePayload;
+  if (!base64.trim()) {
+    throw new Error('图片数据为空，无法保存');
+  }
+
+  const filePath = path.join(IMAGE_DIR, `${taskId}-${itemIndex}-${subIndex}.png`);
+  fs.writeFileSync(filePath, Buffer.from(base64, 'base64'));
+  return `/api/nova/images/${taskId}/${itemIndex}`;
 }
 
 function getTaskImageFiles(taskId) {
@@ -1079,7 +1128,6 @@ function createGptImageRequestInit(apiKey, request, resolvedSize, options = {}) 
     formData.append('model', request.model);
     formData.append('prompt', prompt);
     formData.append('n', '1');
-    formData.append('response_format', 'url');
     if (stream) {
       formData.append('stream', 'true');
     }
@@ -1115,7 +1163,6 @@ function createGptImageRequestInit(apiKey, request, resolvedSize, options = {}) 
   const payload = {
     prompt,
     model: request.model,
-    response_format: 'url',
     ...(stream ? { stream: true } : {}),
     ...(resolvedSize ? { size: resolvedSize } : {}),
     ...(advancedParams ? {
@@ -1312,9 +1359,15 @@ async function requestGptImage(apiKey, request, resolvedSize, options = {}) {
   const endpoint = request.mode === 'image-to-image'
     ? '/v1/images/edits'
     : '/v1/images/generations';
+  const requestUrl = `${baseUrl}${endpoint}`;
+  const requestInit = createGptImageRequestInit(apiKey, request, resolvedSize, options);
+  const dispatcher = getImageProxyDispatcher(baseUrl);
+  if (dispatcher) {
+    requestInit.dispatcher = dispatcher;
+  }
   const response = await fetchWithTimeout(
-    `${baseUrl}${endpoint}`,
-    createGptImageRequestInit(apiKey, request, resolvedSize, options)
+    requestUrl,
+    requestInit
   );
   return parseGptImageResponse(response);
 }
@@ -1344,7 +1397,13 @@ async function fetchWithTimeout(url, init, timeoutMs = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    const { dispatcher, ...fetchInit } = init || {};
+    const fetchImpl = dispatcher ? require('undici').fetch : fetch;
+    return await fetchImpl(url, {
+      ...fetchInit,
+      ...(dispatcher ? { dispatcher } : {}),
+      signal: controller.signal,
+    });
   } finally {
     clearTimeout(timeout);
   }
@@ -1443,7 +1502,8 @@ async function generateSingleImage(apiKey, request, taskId, index) {
         const remoteUrl = img.substring(4);
         imageRefs.push(`URL:${remoteUrl}`);
       } else {
-        imageRefs.push(`data:image/png;base64,${img}`);
+        const localUrl = saveImageToDisk(taskId, index, subIdx, img);
+        imageRefs.push(`URL:${localUrl}`);
       }
     }
     db.prepare("UPDATE task_items SET status = 'completed', image_data = ?, completed_at = ? WHERE task_id = ? AND item_index = ?")

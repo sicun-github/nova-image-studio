@@ -18,7 +18,7 @@ describe('backend GPT Image advanced params forwarding', () => {
   });
 
   it('forwards quality/background/output_format and conditional style in multipart edits', () => {
-    expect(serverSource).toContain("formData.append('response_format', 'url')");
+    expect(serverSource).not.toContain("formData.append('response_format', 'url')");
     expect(serverSource).toContain("formData.append('quality', advancedParams.quality)");
     expect(serverSource).toContain("formData.append('background', advancedParams.background)");
     expect(serverSource).toContain("formData.append('output_format', 'png')");
@@ -26,7 +26,7 @@ describe('backend GPT Image advanced params forwarding', () => {
   });
 
   it('forwards quality/background/output_format and conditional style in JSON generations', () => {
-    expect(serverSource).toContain("response_format: 'url'");
+    expect(serverSource).not.toContain("response_format: 'url'");
     expect(serverSource).toContain('quality: advancedParams.quality');
     expect(serverSource).toContain('background: advancedParams.background');
     expect(serverSource).toContain("output_format: 'png'");
@@ -47,11 +47,12 @@ describe('backend GPT Image advanced params forwarding', () => {
     expect(serverSource).toContain('return requestGptImage(apiKey, request, resolvedSize, { baseUrl })');
   });
 
-  it('returns remote image URLs to the frontend instead of downloading them on the backend', () => {
+  it('stores base64 images on the backend and returns backend image URLs', () => {
     const match = serverSource.match(/async function generateSingleImage[\s\S]*?\n}\n\nasync function runTask/);
     expect(match?.[0]).toContain('imageRefs.push(`URL:${remoteUrl}`)');
-    expect(match?.[0]).toContain('imageRefs.push(`data:image/png;base64,${img}`)');
+    expect(match?.[0]).toContain('const localUrl = saveImageToDisk(taskId, index, subIdx, img)');
+    expect(match?.[0]).toContain('imageRefs.push(`URL:${localUrl}`)');
     expect(serverSource).not.toContain('downloadUrlToDisk(');
-    expect(serverSource).not.toContain('saveImageToDisk(');
+    expect(serverSource).toContain('function saveImageToDisk(taskId, itemIndex, subIndex, imagePayload)');
   });
 });
