@@ -58,9 +58,24 @@ const JOBS_KEY = 'nova-jobs';
 export { IMG_STORE };
 export const openDB = openImageDb;
 
+function normalizeDataImageSrc(imageData: string): string {
+  const match = imageData.match(/^(data:image\/[a-z0-9.+-]+;base64,)(.*)$/i);
+  if (!match) return imageData;
+
+  let payload = match[2];
+  while (/^data:image\/[a-z0-9.+-]+;base64,/i.test(payload)) {
+    payload = payload.replace(/^data:image\/[a-z0-9.+-]+;base64,/i, '');
+  }
+  return `${match[1]}${payload}`;
+}
+
 export function getImageSrc(imageData: string): string {
   if (imageData.startsWith('blob:')) {
     return imageData;
+  }
+
+  if (imageData.startsWith('data:')) {
+    return normalizeDataImageSrc(imageData);
   }
 
   if (imageData.startsWith('URL:')) {

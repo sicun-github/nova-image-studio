@@ -123,7 +123,6 @@ const TASK_TTL_MS = 12 * 60 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const MODEL_CHECK_TIMEOUT_MS = 30 * 1000;
-const IMAGE_STREAM_UNSUPPORTED_PATTERN = /(?:stream.*(?:unsupported|not supported|unknown|unrecognized|invalid)|(?:unsupported|not supported|unknown|unrecognized|invalid).*stream|stream.*(?:不支持|未知|无效)|(?:不支持|未知|无效).*stream)/i;
 // 不再硬编码模型列表，由前端通过 protocol 字段指定协议类型
 const VALID_PROTOCOLS = new Set(['google', 'openai']);
 const GPT_IMAGE_QUALITIES = new Set(['auto', 'high', 'medium', 'low']);
@@ -369,26 +368,28 @@ function ensureImageDir() {
   }
 }
 
-function getImageExtension(mimeType) {
-  if (mimeType?.includes('jpeg') || mimeType?.includes('jpg')) return 'jpg';
-  if (mimeType?.includes('webp')) return 'webp';
-  return 'png';
-}
+function logGeneratedImagePayload(taskId, itemIndex, subIndex, imagePayload) {
+  if (imagePayload.startsWith('URL:')) {
+    console.log('[image-task] 生图成功，收到远程图片 URL:', {
+      taskId,
+      itemIndex,
+      subIndex,
+      url: imagePayload.substring(4),
+    });
+    return;
+  }
 
-function saveImageToDisk(taskId, itemIndex, subIndex, imageBuffer, mimeType) {
-  const ext = getImageExtension(mimeType);
-  const fileName = `${taskId}-${itemIndex}-${subIndex}.${ext}`;
-  const filePath = path.join(IMAGE_DIR, fileName);
-  fs.writeFileSync(filePath, imageBuffer);
-  return { filePath, httpUrl: `/api/nova/images/${taskId}/${itemIndex}` };
-}
-
-async function downloadUrlToDisk(taskId, itemIndex, subIndex, imageUrl) {
-  const response = await fetchWithTimeout(imageUrl, {});
-  if (!response.ok) throw new Error(`远程图片下载失败: ${response.status}`);
-  const contentType = response.headers.get('content-type') || 'image/png';
-  const buffer = Buffer.from(await response.arrayBuffer());
-  return saveImageToDisk(taskId, itemIndex, subIndex, buffer, contentType);
+  const length = imagePayload.length;
+  const approxBytes = Math.floor(length * 3 / 4);
+  console.log('[image-task] 生图成功，收到 base64 图片:', {
+    taskId,
+    itemIndex,
+    subIndex,
+    chars: length,
+    approxMB: Number((approxBytes / 1024 / 1024).toFixed(2)),
+    head: imagePayload.slice(0, 160),
+    tail: imagePayload.slice(-160),
+  });
 }
 
 function getTaskImageFiles(taskId) {
@@ -1078,6 +1079,7 @@ function createGptImageRequestInit(apiKey, request, resolvedSize, options = {}) 
     formData.append('model', request.model);
     formData.append('prompt', prompt);
     formData.append('n', '1');
+    formData.append('response_format', 'url');
     if (stream) {
       formData.append('stream', 'true');
     }
@@ -1113,6 +1115,7 @@ function createGptImageRequestInit(apiKey, request, resolvedSize, options = {}) 
   const payload = {
     prompt,
     model: request.model,
+    response_format: 'url',
     ...(stream ? { stream: true } : {}),
     ...(resolvedSize ? { size: resolvedSize } : {}),
     ...(advancedParams ? {
@@ -1304,11 +1307,6 @@ async function parseGptImageResponse(response) {
   return extractImagePayload(data);
 }
 
-function isImageStreamUnsupportedError(error) {
-  const message = error instanceof Error ? error.message : String(error);
-  return IMAGE_STREAM_UNSUPPORTED_PATTERN.test(message);
-}
-
 async function requestGptImage(apiKey, request, resolvedSize, options = {}) {
   const baseUrl = options.baseUrl || resolveNovaApiBaseUrl();
   const endpoint = request.mode === 'image-to-image'
@@ -1328,7 +1326,7 @@ async function requestGptImage(apiKey, request, resolvedSize, options = {}) {
 try {
   const { Agent, setGlobalDispatcher } = require('undici');
   setGlobalDispatcher(new Agent({
-    keepAliveTimeout: 60 * 1000,         // 空闲连接保持 60 秒
+    keepAliveTimeout: 10 * 60 * 1000,    // 空闲连接保持 10 分钟，避免长时间生图响应被 60 秒连接保持时间打断
     keepAliveMaxTimeout: 10 * 60 * 1000, // 最大保持 10 分钟
     connect: {
       keepAlive: true,
@@ -1437,23 +1435,28 @@ async function generateSingleImage(apiKey, request, taskId, index) {
   try {
     const image = await generateNovaImage(apiKey, request);
     const expanded = image.startsWith('MULTI_URL:') ? image.substring(10).split('|||').map(url => `URL:${url}`) : [image];
-    const diskRefs = [];
+    const imageRefs = [];
     for (let subIdx = 0; subIdx < expanded.length; subIdx++) {
       const img = expanded[subIdx];
+      logGeneratedImagePayload(taskId, index, subIdx, img);
       if (img.startsWith('URL:')) {
         const remoteUrl = img.substring(4);
-        const result = await downloadUrlToDisk(taskId, index, subIdx, remoteUrl);
-        diskRefs.push(`URL:${result.httpUrl}`);
+        imageRefs.push(`URL:${remoteUrl}`);
       } else {
-        const buffer = Buffer.from(img, 'base64');
-        const result = saveImageToDisk(taskId, index, subIdx, buffer, 'image/png');
-        diskRefs.push(`URL:${result.httpUrl}`);
+        imageRefs.push(`data:image/png;base64,${img}`);
       }
     }
     db.prepare("UPDATE task_items SET status = 'completed', image_data = ?, completed_at = ? WHERE task_id = ? AND item_index = ?")
-      .run(JSON.stringify(diskRefs), new Date().toISOString(), taskId, index);
-    return { success: true, images: diskRefs };
+      .run(JSON.stringify(imageRefs), new Date().toISOString(), taskId, index);
+    return { success: true, images: imageRefs };
   } catch (error) {
+    console.warn('[image-task] 单图生成失败:', {
+      taskId,
+      index,
+      message: error?.message || String(error),
+      cause: error?.cause?.message || error?.cause || undefined,
+      code: error?.code || error?.cause?.code || undefined,
+    });
     const message = normalizeError(error);
     db.prepare("UPDATE task_items SET status = 'failed', error = ?, completed_at = ? WHERE task_id = ? AND item_index = ?")
       .run(message, new Date().toISOString(), taskId, index);
