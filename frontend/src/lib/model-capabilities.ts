@@ -1,8 +1,10 @@
 import {
   getBuiltinPreset,
+  getBaseModelId,
   getDefaultModelId,
   getModelImageLimits,
   getModelOptions,
+  isTokenModel,
   isGptImageModel,
   type ModelId,
 } from '@/lib/gemini-config';
@@ -29,7 +31,7 @@ export const DEFAULT_GPT_IMAGE_ADVANCED_PARAMS: GptImageAdvancedParams = {
 };
 
 function getModelConfig(modelId: string) {
-  return getImageModelById(loadRegistry(), modelId);
+  return getImageModelById(loadRegistry(), getBaseModelId(modelId));
 }
 
 function getBuiltinPresetId(modelId: string): string {
@@ -378,14 +380,17 @@ export function detectClosestAspectRatio(width: number, height: number, options:
 }
 
 export function getModelDisplayName(model: string): string {
-  return getModelOptions().find(option => option.value === model)?.label || getModelConfig(model)?.name || model;
+  const baseModel = getBaseModelId(model);
+  const baseLabel = getModelOptions().find(option => option.value === baseModel)?.label || getModelConfig(baseModel)?.name || baseModel;
+  return isTokenModel(model) ? `${baseLabel}（按量计费）` : baseLabel;
 }
 
 export function normalizeModel(candidate?: string): ModelId {
   const fallback = getDefaultModelId();
   if (!candidate) return fallback;
-  return getModelOptions().some(option => option.value === candidate)
-    ? candidate as ModelId
+  const baseCandidate = getBaseModelId(candidate);
+  return getModelOptions().some(option => option.value === baseCandidate)
+    ? baseCandidate as ModelId
     : fallback;
 }
 

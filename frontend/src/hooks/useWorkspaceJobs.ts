@@ -101,7 +101,7 @@ export function useWorkspaceJobs() {
   }, []);
 
   const completeJob = useCallback(async (jobId: string, job: StoredJob) => {
-    persistJobs(prev => prev.map(current => (current.id === jobId ? job : current)));
+    persistJobs(prev => prev.map(current => (current.id === jobId ? { ...job, completed_at: job.completed_at || new Date().toISOString() } : current)));
     setLoadedImages(prev => {
       const next = new Set(prev);
       next.add(job.id);
@@ -119,6 +119,7 @@ export function useWorkspaceJobs() {
       failedJob = {
         ...job,
         status: 'failed',
+        completed_at: new Date().toISOString(),
         error,
         networkError: classification.reason === 'network',
         terminal,

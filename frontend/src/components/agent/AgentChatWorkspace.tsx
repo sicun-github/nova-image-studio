@@ -26,6 +26,7 @@ import {
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Slider } from '@/components/ui/slider';
+import { Switch } from '@/components/ui/switch';
 import { AttachmentChips } from '@/components/AttachmentChips';
 import { GptImageAdvancedParamsControl } from '@/components/GptImageAdvancedParamsControl';
 import { MissingApiKeyDialog } from '@/components/MissingApiKeyDialog';
@@ -41,7 +42,7 @@ import { handleMarkdownCodeCopyButtonClick } from '@/lib/markdown-code-copy';
 import { generateUUID } from '@/lib/uuid';
 import { prepareUploadImage, getOptimizationBadge } from '@/lib/upload-image-cache';
 import { useAgentChat, type PendingUpload, type AgentPhase } from '@/hooks/useAgentChat';
-import { MODEL_OPTIONS, supportsTokenMode, type ModelId } from '@/lib/gemini-config';
+import { getBaseModelId, getTokenModelId, isTokenModel, MODEL_OPTIONS, supportsTokenMode, type ModelId } from '@/lib/gemini-config';
 import { addTextAsset, getAssetBlob, type ImageAsset, type TextAsset } from '@/lib/asset-store';
 import type { OutputSize, AspectRatio } from '@/lib/job-store';
 import {
@@ -82,6 +83,7 @@ interface AgentParamsSettings {
   gptImageBackground: GptImageBackground;
   parallelCount: ParallelCount;
   customSize?: string;
+  tokenBilling?: boolean;
 }
 
 interface AgentChatWorkspaceProps {
@@ -145,12 +147,14 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
 
   // ===== 用户参数状态（持久化到 localStorage）=====
   const savedParams = loadJsonFromStorage<AgentParamsSettings>(AGENT_PARAMS_KEY);
-  const [userModel, setUserModel] = useState<ModelId>(savedParams.model || agent.imageModel);
+  const savedUserModel = savedParams.model || agent.imageModel;
+  const initialUserModel = getBaseModelId(savedUserModel);
+  const [userModel, setUserModel] = useState<ModelId>(initialUserModel);
   const [userOutputSize, setUserOutputSize] = useState<OutputSize>(savedParams.outputSize || '1K');
   const [userAspectRatio, setUserAspectRatio] = useState<AspectRatio>(savedParams.aspectRatio || '1:1');
   const [userTemperature, setUserTemperature] = useState<number>(savedParams.temperature ?? 1);
   const [userAdvancedParams, setUserAdvancedParams] = useState<GptImageAdvancedParams>(() =>
-    getGptImageAdvancedParamsForModel(savedParams.model || agent.imageModel, {
+    getGptImageAdvancedParamsForModel(initialUserModel, {
       quality: savedParams.gptImageQuality,
       style: savedParams.gptImageStyle,
       background: savedParams.gptImageBackground,
@@ -158,10 +162,28 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
   );
   const [userParallelCount, setUserParallelCount] = useState<ParallelCount>((savedParams.parallelCount as ParallelCount) ?? 1);
   const [userCustomSize, setUserCustomSize] = useState<string | undefined>(savedParams.customSize);
+  const [userTokenBilling, setUserTokenBilling] = useState(
+    supportsTokenMode(initialUserModel) && (Boolean(savedParams.tokenBilling) || isTokenModel(savedUserModel))
+  );
   const [customSizeDialogOpen, setCustomSizeDialogOpen] = useState(false);
 
   const supportsTemperature = getSupportsTemperature(userModel);
   const supportsAdvancedParams = supportsGptImageAdvancedParams(userModel);
+  const userTokenBillingEnabled = Boolean(userTokenBilling && supportsTokenMode(userModel));
+  const userModelLabel = MODEL_OPTIONS.find(o => o.value === userModel)?.label || userModel;
+
+  const applyUserModel = useCallback((nextModel: ModelId, nextTokenBilling = userTokenBillingEnabled) => {
+    const sizes = getSizeOptions(nextModel).map(s => s.value);
+    const nextSize = sizes.includes(userOutputSize) ? userOutputSize : (sizes[0] || '1K');
+    const ratios = getAspectRatioOptions(nextModel, nextSize).map(a => a.value);
+    const nextRatio = ratios.includes(userAspectRatio) ? userAspectRatio : (ratios[0] || '1:1');
+    setUserModel(nextModel);
+    setUserAdvancedParams(prev => getGptImageAdvancedParamsForModel(nextModel, prev));
+    setUserTokenBilling(supportsTokenMode(nextModel) ? nextTokenBilling : false);
+    if (nextSize !== userOutputSize) setUserOutputSize(nextSize as OutputSize);
+    if (nextRatio !== userAspectRatio) setUserAspectRatio(nextRatio as AspectRatio);
+    if (!supportsCustomSize(nextModel)) setUserCustomSize(undefined);
+  }, [userAspectRatio, userOutputSize, userTokenBillingEnabled]);
 
   // 参数变化时自动持久化
   useEffect(() => {
@@ -175,8 +197,9 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
       gptImageBackground: userAdvancedParams.background,
       parallelCount: userParallelCount,
       customSize: userCustomSize,
+      tokenBilling: userTokenBillingEnabled,
     });
-  }, [userModel, userOutputSize, userAspectRatio, userTemperature, userAdvancedParams, userParallelCount, userCustomSize]);
+  }, [userModel, userOutputSize, userAspectRatio, userTemperature, userAdvancedParams, userParallelCount, userCustomSize, userTokenBillingEnabled]);
 
   // Popover 开关状态（用于选择后自动关闭）
   const [modelPopoverOpen, setModelPopoverOpen] = useState(false);
@@ -635,7 +658,8 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
               if (intentRecognition) {
                 void agent.approveProposal(prompt, ids, _model, _params);
               } else {
-                void agent.approveProposal(prompt, ids, userModel, {
+                const modelWithBilling = userTokenBillingEnabled ? getTokenModelId(userModel) : userModel;
+                void agent.approveProposal(prompt, ids, modelWithBilling, {
                   outputSize: userOutputSize,
                   customSize: userCustomSize,
                   aspectRatio: userAspectRatio,
@@ -905,35 +929,43 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
                 >
                   <ImagePlus className="h-3 w-3" />
                   <span className="shrink-0 truncate text-[11px]">
-                    {MODEL_OPTIONS.find(o => o.value === userModel)?.label || userModel}
+                    {userModelLabel}{userTokenBillingEnabled ? '（按量计费）' : ''}
                   </span>
                 </PopoverTrigger>
                 <PopoverContent className="w-48 p-1" align="start">
-                  {MODEL_OPTIONS.map(option => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => {
-                        const nextModel = option.value;
-                        const sizes = getSizeOptions(nextModel).map(s => s.value);
-                        const nextSize = sizes.includes(userOutputSize) ? userOutputSize : (sizes[0] || '1K');
-                        const ratios = getAspectRatioOptions(nextModel, nextSize).map(a => a.value);
-                        const nextRatio = ratios.includes(userAspectRatio) ? userAspectRatio : (ratios[0] || '1:1');
-                        setUserModel(nextModel);
-                        setUserAdvancedParams(prev => getGptImageAdvancedParamsForModel(nextModel, prev));
-                        if (nextSize !== userOutputSize) setUserOutputSize(nextSize as OutputSize);
-                        if (nextRatio !== userAspectRatio) setUserAspectRatio(nextRatio as AspectRatio);
-                        if (!supportsCustomSize(nextModel)) setUserCustomSize(undefined);
-                        setModelPopoverOpen(false);
-                      }}
-                      className={cn(
-                        'w-full text-left px-2.5 py-1.5 rounded-md text-sm hover:bg-muted',
-                        userModel === option.value && 'bg-muted font-medium'
-                      )}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
+                  {MODEL_OPTIONS.map(option => {
+                    const optionSupportsTokenMode = supportsTokenMode(option.value);
+                    const optionTokenBilling = userModel === option.value && userTokenBillingEnabled;
+
+                    return (
+                      <div
+                        key={option.value}
+                        className={cn(
+                          'flex items-center justify-between rounded-md text-sm hover:bg-muted',
+                          userModel === option.value && 'bg-muted font-medium'
+                        )}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            applyUserModel(option.value);
+                            setModelPopoverOpen(false);
+                          }}
+                          className="min-w-0 flex-1 px-2.5 py-1.5 text-left"
+                        >
+                          {option.label}
+                        </button>
+                        <Switch
+                          checked={optionTokenBilling}
+                          disabled={!optionSupportsTokenMode}
+                          onClick={(event) => event.stopPropagation()}
+                          onCheckedChange={(checked) => applyUserModel(option.value, checked)}
+                          aria-label={`${option.label} 按量计费`}
+                          className="mr-1.5 scale-75"
+                        />
+                      </div>
+                    );
+                  })}
                 </PopoverContent>
               </Popover>
 

@@ -22,6 +22,29 @@ function isWaitingJob(job: StoredJob): boolean {
   return job.status === 'processing' || job.status === 'queued' || job.status === '排队中';
 }
 
+function formatJobTime(value?: string): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
+
+function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '';
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) return `${seconds}秒`;
+  return `${minutes}分${seconds.toString().padStart(2, '0')}秒`;
+}
+
 function useNow(enabled: boolean) {
   const [now, setNow] = useState(() => Date.now());
 
@@ -56,6 +79,7 @@ const WaitingJobCard = memo(function WaitingJobCard({
       ? (parallelCount > 1 ? `生成中 (x${parallelCount})...` : '生成中...')
       : (parallelCount > 1 ? `转换中 (x${parallelCount})...` : '转换中...');
   const elapsedSeconds = Math.max(0, Math.floor((now - Date.parse(job.created_at)) / 1000));
+  const createdTime = formatJobTime(job.created_at);
 
   return (
     <div className="rounded-xl border border-border bg-card p-4">
@@ -71,6 +95,7 @@ const WaitingJobCard = memo(function WaitingJobCard({
           <p className="mt-0.5 text-xs text-muted-foreground">
             已用 <span className="font-mono text-foreground">{elapsedSeconds}</span> 秒 · {getModelDisplayName(job.model)}
           </p>
+          {createdTime && <p className="mt-0.5 text-xs text-muted-foreground">创建 {createdTime}</p>}
         </div>
         {job.serverTaskId && (
           <Button
@@ -314,6 +339,9 @@ export function HistoryJobList({
       // terminal=true → 后端明确判定不可恢复，不显示"查看进度"
       // 其他情况（默认 / 网络错误 / 未分类）都允许"查看进度"，让用户兜底
       const allowCheckStatus = !job.terminal && !!job.serverTaskId;
+      const createdTime = formatJobTime(job.created_at);
+      const completedTime = formatJobTime(job.completed_at);
+      const duration = job.completed_at ? formatDuration(Date.parse(job.completed_at) - Date.parse(job.created_at)) : '';
       return (
         <div className="rounded-xl border border-destructive/20 bg-card p-4">
           <div className="flex items-start justify-between gap-3">
@@ -321,6 +349,11 @@ export function HistoryJobList({
               <p className="truncate text-base text-foreground">&quot;{job.prompt}&quot;</p>
               <p className="max-h-20 overflow-y-auto text-sm text-destructive">{job.error || '任务失败'}</p>
               <p className="text-xs text-muted-foreground">{getModelDisplayName(job.model)}</p>
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                {createdTime && <span>创建 {createdTime}</span>}
+                {completedTime && <span>结束 {completedTime}</span>}
+                {duration && <span>耗时 {duration}</span>}
+              </p>
             </div>
             <div className="flex gap-1">
               {allowCheckStatus && (

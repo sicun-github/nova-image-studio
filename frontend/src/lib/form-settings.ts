@@ -18,4 +18,5 @@ export interface ImageFormSettings {
   gptImageStyle: GptImageStyle;
   gptImageBackground: GptImageBackground;
   parallelCount: ParallelCount;
+  tokenBilling?: boolean;
 }

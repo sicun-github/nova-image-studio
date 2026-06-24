@@ -4,11 +4,12 @@ import { useState } from 'react';
 import { Check, Copy, Maximize, RectangleHorizontal, Sparkles, Thermometer } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
+import { Switch } from '@/components/ui/switch';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CustomSizeDialog } from '@/components/CustomSizeDialog';
 import { GptImageAdvancedParamsControl } from '@/components/GptImageAdvancedParamsControl';
 import { cn } from '@/lib/utils';
-import { MODEL_OPTIONS, isGptImageModel, type ModelId } from '@/lib/gemini-config';
+import { MODEL_OPTIONS, isGptImageModel, supportsTokenMode, type ModelId } from '@/lib/gemini-config';
 import {
   getAspectRatioOptions,
   getCustomSizeMaxSide,
@@ -32,6 +33,7 @@ export type GenerationParamsValue = {
   temperature: number;
   parallelCount: ParallelCount;
   gptImageAdvancedParams: GptImageAdvancedParams;
+  tokenBilling?: boolean;
 };
 
 type ButtonSize = 'xs' | 'sm';
@@ -56,6 +58,8 @@ export function GenerationParamsBar({ value, onChange, size = 'xs', className }:
   const [customSizeDialogOpen, setCustomSizeDialogOpen] = useState(false);
 
   const model = value.model;
+  const tokenBilling = Boolean(value.tokenBilling && supportsTokenMode(model));
+  const selectedModelLabel = MODEL_OPTIONS.find(o => o.value === model)?.label || model;
   const sizeOptions = getSizeOptions(model);
   const aspectRatioOptions = getAspectRatioOptions(model, value.outputSize);
   const supportsTemperature = !isGptImageModel(model);
@@ -66,14 +70,21 @@ export function GenerationParamsBar({ value, onChange, size = 'xs', className }:
   const customSizeAvailable = supportsCustomSize(model) && !autoLayoutLocked;
   const customSizeMaxSide = getCustomSizeMaxSide(model) || 2048;
   const displaySizeLabel = value.customSize || getOutputSizeLabel(value.outputSize);
-  const handleModelChange = (newModel: ModelId) => {
+  const handleModelChange = (newModel: ModelId, nextTokenBilling = tokenBilling) => {
     const nextGpt = getGptImageAdvancedParamsForModel(newModel, value.gptImageAdvancedParams);
     const nextSizeOptions = getSizeOptions(newModel);
     const nextOutputSize: OutputSize = value.outputSize === 'auto' && supportsAutoLayout(newModel) ? 'auto' : (nextSizeOptions.find(s => s.value === value.outputSize)?.value || nextSizeOptions[0].value);
     const nextCustomSize = supportsCustomSize(newModel) ? normalizeCustomImageSize(value.customSize, getCustomSizeMaxSide(newModel)) : undefined;
     const aspectOptions = getAspectRatioOptions(newModel, nextOutputSize);
     const nextAspectRatio: AspectRatio = aspectOptions.find(a => a.value === value.aspectRatio) ? value.aspectRatio : (aspectOptions[0]?.value || '1:1');
-    onChange({ model: newModel, outputSize: nextOutputSize, customSize: nextCustomSize, aspectRatio: nextAspectRatio, gptImageAdvancedParams: nextGpt });
+    onChange({
+      model: newModel,
+      outputSize: nextOutputSize,
+      customSize: nextCustomSize,
+      aspectRatio: nextAspectRatio,
+      gptImageAdvancedParams: nextGpt,
+      tokenBilling: supportsTokenMode(newModel) ? nextTokenBilling : false,
+    });
   };
 
   const handleSizeChange = (newSize: OutputSize) => {
@@ -109,21 +120,44 @@ export function GenerationParamsBar({ value, onChange, size = 'xs', className }:
       <Popover open={modelPopoverOpen} onOpenChange={setModelPopoverOpen}>
         <PopoverTrigger className={cn(buttonVariants({ variant: 'outline', size }), 'gap-1')} title="模型选择">
           <Sparkles className="h-3 w-3" />
-          <span className="shrink-0 truncate text-[11px]">{MODEL_OPTIONS.find(o => o.value === model)?.label}</span>
+          <span className="shrink-0 truncate text-[11px]">
+            {selectedModelLabel}{tokenBilling ? '（按量计费）' : ''}
+          </span>
         </PopoverTrigger>
         <PopoverContent className="w-48 p-1" align="start">
-          {MODEL_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              onClick={() => {
-                handleModelChange(option.value);
-                setModelPopoverOpen(false);
-              }}
-              className={cn('w-full text-left px-2.5 py-1.5 rounded-md text-sm hover:bg-muted', model === option.value && 'bg-muted font-medium')}
-            >
-              {option.label}
-            </button>
-          ))}
+          {MODEL_OPTIONS.map((option) => {
+            const optionSupportsTokenMode = supportsTokenMode(option.value);
+            const optionTokenBilling = model === option.value && tokenBilling;
+
+            return (
+              <div
+                key={option.value}
+                className={cn(
+                  'flex items-center justify-between rounded-md text-sm hover:bg-muted',
+                  model === option.value && 'bg-muted font-medium'
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleModelChange(option.value);
+                    setModelPopoverOpen(false);
+                  }}
+                  className="min-w-0 flex-1 px-2.5 py-1.5 text-left"
+                >
+                  {option.label}
+                </button>
+                <Switch
+                  checked={optionTokenBilling}
+                  disabled={!optionSupportsTokenMode}
+                  onClick={(event) => event.stopPropagation()}
+                  onCheckedChange={(checked) => handleModelChange(option.value, checked)}
+                  aria-label={`${option.label} 按量计费`}
+                  className="mr-1.5 scale-75"
+                />
+              </div>
+            );
+          })}
         </PopoverContent>
       </Popover>
 

@@ -38,6 +38,29 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function formatJobTime(value?: string): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
+
+function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '';
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) return `${seconds}秒`;
+  return `${minutes}分${seconds.toString().padStart(2, '0')}秒`;
+}
+
 function getDownloadProgressSummary(progress: StoredJob['imageDownloadProgress']): DownloadProgressSummary | null {
   if (!progress || progress.total <= 0) return null;
 
@@ -159,6 +182,9 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
   const isMultiple = sourceImages.length > 1;
   const supportsTemperature = !job.model.startsWith('gpt-image-2');
   const outputSizeLabel = job.custom_size || getOutputSizeLabel(job.output_size);
+  const createdTime = formatJobTime(job.created_at);
+  const completedTime = formatJobTime(job.completed_at);
+  const duration = job.completed_at ? formatDuration(Date.parse(job.completed_at) - Date.parse(job.created_at)) : '';
   const lazyLoad = useImageLazyLoad<HTMLDivElement>({
     rootMargin: '300px',
     enabled: true,
@@ -337,6 +363,11 @@ export const CompletedJobCard = memo(function CompletedJobCard({ job, onClear, o
               {job.aspect_ratio !== '1:1' && job.aspect_ratio !== 'auto' && <><span>·</span><span>{job.aspect_ratio}</span></>}
               {supportsTemperature && <><span>·</span><Thermometer className="w-3 h-3" /><span>{job.temperature?.toFixed(2) ?? 1}</span></>}
               {isMultiple && <><span>·</span><span className="font-medium text-primary">x{sourceImages.length}{job.parallelCount && job.parallelCount > sourceImages.length ? `/${job.parallelCount}` : ''}</span></>}
+            </p>
+            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+              {createdTime && <span>创建 {createdTime}</span>}
+              {completedTime && <span>完成 {completedTime}</span>}
+              {duration && <span>耗时 {duration}</span>}
             </p>
           </div>
 

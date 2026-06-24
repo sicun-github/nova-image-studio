@@ -5,6 +5,7 @@ import { Check, ImagePlus, Layers, Maximize, Pencil, RectangleHorizontal, Sparkl
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
+import { Switch } from '@/components/ui/switch';
 import { CustomSizeDialog } from '@/components/CustomSizeDialog';
 import { GptImageAdvancedParamsControl } from '@/components/GptImageAdvancedParamsControl';
 import {
@@ -16,6 +17,8 @@ import { cn } from '@/lib/utils';
 import {
   MODEL_OPTIONS,
   MODEL_IMAGE_LIMITS,
+  getTokenModelId,
+  supportsTokenMode,
   type ModelId,
 } from '@/lib/gemini-config';
 import type { AspectRatio, OutputSize } from '@/lib/job-store';
@@ -85,6 +88,7 @@ export function AgentProposalCard({
   const [tempPopoverOpen, setTempPopoverOpen] = useState(false);
   const [parallelPopoverOpen, setParallelPopoverOpen] = useState(false);
   const [customSizeDialogOpen, setCustomSizeDialogOpen] = useState(false);
+  const [tokenBilling, setTokenBilling] = useState(false);
 
   const imageMap = useMemo(() => new Map(images.map(img => [img.imgId, img])), [images]);
 
@@ -105,17 +109,7 @@ export function AgentProposalCard({
       temperature: proposal.temperature,
       parallelCount: proposal.parallelCount,
     }, undefined);
-    const advancedParams = getGptImageAdvancedParamsForModel(imageModel, {
-      quality: proposal.gptImageQuality,
-      style: proposal.gptImageStyle,
-      background: proposal.gptImageBackground,
-    });
-    return {
-      ...resolved,
-      gptImageQuality: advancedParams.quality,
-      gptImageStyle: advancedParams.style,
-      gptImageBackground: advancedParams.background,
-    };
+    return resolved;
   });
 
   // 提案首次出现且尚未手动选过参考图时，用首张参考图维度重算一次预填
@@ -131,23 +125,17 @@ export function AgentProposalCard({
         temperature: proposal.temperature,
         parallelCount: proposal.parallelCount,
       }, firstRefDims);
-      const advancedParams = getGptImageAdvancedParamsForModel(imageModel, {
-        quality: proposal.gptImageQuality,
-        style: proposal.gptImageStyle,
-        background: proposal.gptImageBackground,
-      });
       setLayout(prev => ({
         ...resolved,
-        gptImageQuality: advancedParams.quality,
-        gptImageStyle: advancedParams.style,
-        gptImageBackground: advancedParams.background,
         parallelCount: prev.parallelCount,
       }));
       setInitializedWithRef(true);
     });
   }, [firstRefDims, initializedWithRef, imageModel, proposal]);
 
+  const tokenBillingEnabled = Boolean(tokenBilling && supportsTokenMode(imageModel));
   const modelLabel = MODEL_OPTIONS.find(o => o.value === imageModel)?.label || imageModel;
+  const modelWithBilling = tokenBillingEnabled ? getTokenModelId(imageModel) : imageModel;
 
   const effectiveMode = selectedIds.length > 0 ? 'edit' : 'generate';
   const overLimit = selectedIds.length > maxRefs;
@@ -185,8 +173,9 @@ export function AgentProposalCard({
     });
   };
 
-  const handleModelChange = (next: ModelId) => {
+  const handleModelChange = (next: ModelId, nextTokenBilling = tokenBillingEnabled) => {
     onModelChange(next);
+    setTokenBilling(supportsTokenMode(next) ? nextTokenBilling : false);
     // 重新合法化当前布局：档位 snap、比例 snap、自定义尺寸按支持情况保留/清除
     setLayout(prev => {
       const validSizes = getValidOutputSizes(next);
@@ -268,7 +257,7 @@ export function AgentProposalCard({
 
   const handleApprove = () => {
     if (busy || overLimit) return;
-    onApprove(prompt, selectedIds.slice(0, maxRefs), imageModel, layout);
+    onApprove(prompt, selectedIds.slice(0, maxRefs), modelWithBilling, layout);
   };
 
   return (
@@ -359,25 +348,44 @@ export function AgentProposalCard({
             className={cn(buttonVariants({ variant: 'outline', size: 'xs' }), 'gap-1')}
           >
             <ImagePlus className="h-3 w-3" />
-            <span className="shrink-0 truncate text-[11px]">{modelLabel}</span>
+            <span className="shrink-0 truncate text-[11px]">
+              {modelLabel}{tokenBillingEnabled ? '（按量计费）' : ''}
+            </span>
           </PopoverTrigger>
           <PopoverContent className="w-48 p-1" align="start">
-            {MODEL_OPTIONS.map(option => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => {
-                  handleModelChange(option.value);
-                  setModelPopoverOpen(false);
-                }}
-                className={cn(
-                  'w-full text-left px-2.5 py-1.5 rounded-md text-sm hover:bg-muted',
-                  imageModel === option.value && 'bg-muted font-medium'
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
+            {MODEL_OPTIONS.map(option => {
+              const optionSupportsTokenMode = supportsTokenMode(option.value);
+              const optionTokenBilling = imageModel === option.value && tokenBillingEnabled;
+
+              return (
+                <div
+                  key={option.value}
+                  className={cn(
+                    'flex items-center justify-between rounded-md text-sm hover:bg-muted',
+                    imageModel === option.value && 'bg-muted font-medium'
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleModelChange(option.value);
+                      setModelPopoverOpen(false);
+                    }}
+                    className="min-w-0 flex-1 px-2.5 py-1.5 text-left"
+                  >
+                    {option.label}
+                  </button>
+                  <Switch
+                    checked={optionTokenBilling}
+                    disabled={!optionSupportsTokenMode}
+                    onClick={(event) => event.stopPropagation()}
+                    onCheckedChange={(checked) => handleModelChange(option.value, checked)}
+                    aria-label={`${option.label} 按量计费`}
+                    className="mr-1.5 scale-75"
+                  />
+                </div>
+              );
+            })}
           </PopoverContent>
         </Popover>
 

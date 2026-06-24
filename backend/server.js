@@ -427,6 +427,20 @@ function logGeneratedImagePayload(taskId, itemIndex, subIndex, imagePayload) {
   });
 }
 
+function bytesToMB(bytes) {
+  return Number((bytes / 1024 / 1024).toFixed(2));
+}
+
+function bytesPerSecondToKB(bytes, durationMs) {
+  if (!durationMs || durationMs <= 0) return null;
+  return Number((bytes / 1024 / (durationMs / 1000)).toFixed(2));
+}
+
+function bytesPerSecondToMB(bytes, durationMs) {
+  if (!durationMs || durationMs <= 0) return null;
+  return Number((bytes / 1024 / 1024 / (durationMs / 1000)).toFixed(2));
+}
+
 function saveImageToDisk(taskId, itemIndex, subIndex, imagePayload) {
   ensureImageDir();
   const base64 = imagePayload.startsWith('data:image')
@@ -437,8 +451,12 @@ function saveImageToDisk(taskId, itemIndex, subIndex, imagePayload) {
   }
 
   const filePath = path.join(IMAGE_DIR, `${taskId}-${itemIndex}-${subIndex}.png`);
-  fs.writeFileSync(filePath, Buffer.from(base64, 'base64'));
-  return `/api/nova/images/${taskId}/${itemIndex}`;
+  const bytes = Buffer.from(base64, 'base64');
+  fs.writeFileSync(filePath, bytes);
+  return {
+    url: `/api/nova/images/${taskId}/${itemIndex}`,
+    bytes: bytes.length,
+  };
 }
 
 function getTaskImageFiles(taskId) {
@@ -1118,45 +1136,91 @@ function getGptImageRequestAdvancedParams(request) {
   return normalizeGptImageAdvancedParams(request);
 }
 
+function sanitizeMultipartFilename(name) {
+  return String(name || 'image.png').replace(/[\r\n"]/g, '_');
+}
+
+function buildMultipartBuffer(fields, files) {
+  const boundary = `----zyt-image-${randomUUID()}`;
+  const chunks = [];
+
+  for (const [name, value] of fields) {
+    chunks.push(Buffer.from(
+      `--${boundary}\r\n`
+      + `Content-Disposition: form-data; name="${name}"\r\n\r\n`
+      + `${value}\r\n`,
+      'utf8',
+    ));
+  }
+
+  for (const file of files) {
+    chunks.push(Buffer.from(
+      `--${boundary}\r\n`
+      + `Content-Disposition: form-data; name="${file.name}"; filename="${sanitizeMultipartFilename(file.filename)}"\r\n`
+      + `Content-Type: ${file.mimeType}\r\n\r\n`,
+      'utf8',
+    ));
+    chunks.push(file.buffer);
+    chunks.push(Buffer.from('\r\n', 'utf8'));
+  }
+
+  chunks.push(Buffer.from(`--${boundary}--\r\n`, 'utf8'));
+  return { boundary, body: Buffer.concat(chunks) };
+}
+
 function createGptImageRequestInit(apiKey, request, resolvedSize, options = {}) {
   const prompt = request.prompt;
   const advancedParams = getGptImageRequestAdvancedParams(request);
   const stream = Boolean(options.stream);
 
   if (request.mode === 'image-to-image') {
-    const formData = new FormData();
-    formData.append('model', request.model);
-    formData.append('prompt', prompt);
-    formData.append('n', '1');
+    const fields = [
+      ['model', request.model],
+      ['prompt', prompt],
+      ['n', '1'],
+    ];
     if (stream) {
-      formData.append('stream', 'true');
+      fields.push(['stream', 'true']);
     }
     if (advancedParams) {
-      formData.append('quality', advancedParams.quality);
-      formData.append('background', advancedParams.background);
-      formData.append('output_format', 'png');
+      fields.push(['quality', advancedParams.quality]);
+      fields.push(['background', advancedParams.background]);
+      fields.push(['output_format', 'png']);
       if (advancedParams.style === 'vivid' || advancedParams.style === 'natural') {
-        formData.append('style', advancedParams.style);
+        fields.push(['style', advancedParams.style]);
       }
     }
     if (resolvedSize) {
-      formData.append('size', resolvedSize);
+      fields.push(['size', resolvedSize]);
     }
 
-    request.images.forEach((img, index) => {
+    const files = request.images.map((img, index) => {
       const mimeType = img.mimeType || 'image/png';
       const extension = mimeType.split('/')[1] || 'png';
-      const bytes = Buffer.from(img.data, 'base64');
-      const blob = new Blob([bytes], { type: mimeType });
-      formData.append('image', blob, `image-${index}.${extension}`);
+      return {
+        name: 'image',
+        filename: `image-${index}.${extension}`,
+        mimeType,
+        buffer: Buffer.from(img.data, 'base64'),
+      };
+    });
+    const multipart = buildMultipartBuffer(fields, files);
+    console.log('[image-task-debug] 图生图 FormData 字段:', {
+      model: request.model,
+      fieldNames: fields.map(([name]) => name),
+      imageCount: request.images.length,
+      imageMimeTypes: request.images.map(img => img.mimeType || 'image/png'),
+      contentLength: multipart.body.length,
     });
 
     return {
       method: 'POST',
       headers: {
+        'Content-Type': `multipart/form-data; boundary=${multipart.boundary}`,
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: formData,
+      body: multipart.body,
+      contentLength: multipart.body.length,
     };
   }
 
@@ -1325,9 +1389,17 @@ function extractImagePayloadFromEventStream(text) {
   throw new Error('响应中无图片数据');
 }
 
-async function parseGptImageResponse(response) {
+async function parseGptImageResponse(response, metrics) {
   const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+  const bodyStartAt = Date.now();
   const responseText = await response.text();
+  const bodyEndAt = Date.now();
+  if (metrics) {
+    metrics.contentType = contentType;
+    metrics.bodyReadMs = bodyEndAt - bodyStartAt;
+    metrics.responseTextChars = responseText.length;
+    metrics.responseTextBytes = Buffer.byteLength(responseText);
+  }
 
   if (!response.ok) {
     const errorText = getUpstreamErrorText(responseText);
@@ -1335,7 +1407,12 @@ async function parseGptImageResponse(response) {
   }
 
   if (contentType.includes('text/event-stream')) {
-    return extractImagePayloadFromEventStream(responseText);
+    const payload = extractImagePayloadFromEventStream(responseText);
+    if (metrics) {
+      metrics.imagePayloadChars = payload.length;
+      metrics.imagePayloadApproxBytes = Math.floor(payload.length * 3 / 4);
+    }
+    return payload;
   }
 
   if (isLikelyHtmlResponse(responseText)) {
@@ -1351,7 +1428,12 @@ async function parseGptImageResponse(response) {
   const errorMessage = getErrorMessageFromPayload(data);
   if (errorMessage) throw new Error(errorMessage);
 
-  return extractImagePayload(data);
+  const payload = extractImagePayload(data);
+  if (metrics) {
+    metrics.imagePayloadChars = payload.length;
+    metrics.imagePayloadApproxBytes = Math.floor(payload.length * 3 / 4);
+  }
+  return payload;
 }
 
 async function requestGptImage(apiKey, request, resolvedSize, options = {}) {
@@ -1364,12 +1446,40 @@ async function requestGptImage(apiKey, request, resolvedSize, options = {}) {
   const dispatcher = getImageProxyDispatcher(baseUrl);
   if (dispatcher) {
     requestInit.dispatcher = dispatcher;
+    if (requestInit.contentLength) {
+      requestInit.headers = {
+        ...requestInit.headers,
+        'Content-Length': String(requestInit.contentLength),
+      };
+    }
   }
+  const startedAt = Date.now();
+  const metrics = {
+    taskId: options.taskId,
+    itemIndex: options.itemIndex,
+    mode: request.mode,
+    model: request.model,
+    baseUrl,
+    endpoint,
+    proxied: Boolean(dispatcher),
+  };
+  console.log('[image-task-metrics] 上游图片请求开始:', metrics);
   const response = await fetchWithTimeout(
     requestUrl,
     requestInit
   );
-  return parseGptImageResponse(response);
+  const headersAt = Date.now();
+  metrics.status = response.status;
+  metrics.headersMs = headersAt - startedAt;
+  const imagePayload = await parseGptImageResponse(response, metrics);
+  metrics.totalMs = Date.now() - startedAt;
+  metrics.bodyKBps = bytesPerSecondToKB(metrics.responseTextBytes || 0, metrics.bodyReadMs);
+  metrics.imagePayloadApproxMB = bytesToMB(metrics.imagePayloadApproxBytes || 0);
+  console.log('[image-task-metrics] 上游图片响应完成:', {
+    ...metrics,
+    responseTextMB: bytesToMB(metrics.responseTextBytes || 0),
+  });
+  return imagePayload;
 }
 
 // ===== 加强网络连接：启用 TCP keepalive，防止 Docker 回环连接被静默断开 =====
@@ -1409,12 +1519,12 @@ async function fetchWithTimeout(url, init, timeoutMs = REQUEST_TIMEOUT_MS) {
   }
 }
 
-async function generateNovaImage(apiKey, request) {
+async function generateNovaImage(apiKey, request, context = {}) {
   // 根据前端传入的 protocol 字段路由到对应的 API 协议
   const baseUrl = request.baseUrl || resolveNovaApiBaseUrl();
   if (request.protocol === 'openai') {
     const resolvedSize = resolveGptImageSize(request);
-    return requestGptImage(apiKey, request, resolvedSize, { baseUrl });
+    return requestGptImage(apiKey, request, resolvedSize, { baseUrl, ...context });
   }
   // 默认走 Google Gemini 协议
   return generateNovaGeminiImage(apiKey, request, { baseUrl });
@@ -1492,7 +1602,7 @@ function drainQueue() {
 
 async function generateSingleImage(apiKey, request, taskId, index) {
   try {
-    const image = await generateNovaImage(apiKey, request);
+    const image = await generateNovaImage(apiKey, request, { taskId, itemIndex: index });
     const expanded = image.startsWith('MULTI_URL:') ? image.substring(10).split('|||').map(url => `URL:${url}`) : [image];
     const imageRefs = [];
     for (let subIdx = 0; subIdx < expanded.length; subIdx++) {
@@ -1502,8 +1612,19 @@ async function generateSingleImage(apiKey, request, taskId, index) {
         const remoteUrl = img.substring(4);
         imageRefs.push(`URL:${remoteUrl}`);
       } else {
-        const localUrl = saveImageToDisk(taskId, index, subIdx, img);
-        imageRefs.push(`URL:${localUrl}`);
+        const saveStartAt = Date.now();
+        const saved = saveImageToDisk(taskId, index, subIdx, img);
+        const saveMs = Date.now() - saveStartAt;
+        console.log('[image-task-metrics] base64 解码写盘完成:', {
+          taskId,
+          itemIndex: index,
+          subIndex: subIdx,
+          bytes: saved.bytes,
+          mb: bytesToMB(saved.bytes),
+          saveMs,
+          writeMBps: bytesPerSecondToMB(saved.bytes, saveMs),
+        });
+        imageRefs.push(`URL:${saved.url}`);
       }
     }
     db.prepare("UPDATE task_items SET status = 'completed', image_data = ?, completed_at = ? WHERE task_id = ? AND item_index = ?")

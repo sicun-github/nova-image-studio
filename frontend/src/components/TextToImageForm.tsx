@@ -18,7 +18,7 @@ import { dispatchImageActionToast } from '@/lib/image-actions';
 import { streamPromptOptimize, type StreamPromptOptimizeHandle } from '@/lib/prompt-optimize-client';
 import { loadJsonFromStorage, saveJsonToStorage } from '@/lib/settings-storage';
 import { requireDefaultConfiguredTextModel } from '@/lib/model-endpoints';
-import { type ModelId } from '@/lib/gemini-config';
+import { getTokenModelId, isTokenModel, supportsTokenMode, type ModelId } from '@/lib/gemini-config';
 import {
   getAspectRatioOptions,
   getCustomSizeMaxSide,
@@ -55,6 +55,7 @@ interface TextToImageFormProps {
     aspectRatio?: AspectRatio;
     temperature?: number;
     model?: ModelId;
+    tokenBilling?: boolean;
     gptImageQuality?: GptImageQuality;
     gptImageStyle?: GptImageStyle;
     gptImageBackground?: GptImageBackground;
@@ -79,6 +80,7 @@ export function TextToImageForm({ onSubmit, disabled = false, onDraftConsumed, o
   const [temperature, setTemperature] = useState<number>(1);
   const [gptImageAdvancedParams, setGptImageAdvancedParams] = useState<GptImageAdvancedParams>(DEFAULT_GPT_IMAGE_ADVANCED_PARAMS);
   const [parallelCount, setParallelCount] = useState<ParallelCount>(1);
+  const [tokenBilling, setTokenBilling] = useState(false);
   const [settingsReady, setSettingsReady] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -151,6 +153,7 @@ export function TextToImageForm({ onSubmit, disabled = false, onDraftConsumed, o
     if (patch.temperature !== undefined) setTemperature(patch.temperature);
     if (patch.parallelCount !== undefined) setParallelCount(patch.parallelCount);
     if (patch.gptImageAdvancedParams !== undefined) setGptImageAdvancedParams(patch.gptImageAdvancedParams);
+    if (patch.tokenBilling !== undefined) setTokenBilling(patch.tokenBilling);
   }, []);
 
   // 自动调整文本框高度
@@ -188,6 +191,10 @@ export function TextToImageForm({ onSubmit, disabled = false, onDraftConsumed, o
     const nextParallelCount: ParallelCount = useInitial && initialData?.parallelCount && [1, 2, 3, 4].includes(initialData.parallelCount)
       ? initialData.parallelCount
       : (saved.parallelCount && [1, 2, 3, 4].includes(saved.parallelCount) ? saved.parallelCount : 1);
+    const nextTokenBilling = supportsTokenMode(nextModel) && (
+      (useInitial && (initialData?.tokenBilling || isTokenModel(initialData?.model || ''))) ||
+      (!useInitial && Boolean(saved.tokenBilling))
+    );
 
     queueMicrotask(() => {
       setModel(nextModel);
@@ -197,6 +204,7 @@ export function TextToImageForm({ onSubmit, disabled = false, onDraftConsumed, o
       setTemperature(nextTemperature);
       setGptImageAdvancedParams(nextAdvancedParams);
       setParallelCount(nextParallelCount);
+      setTokenBilling(nextTokenBilling);
       if (useInitial && initialData?.prompt) {
         setPrompt(initialData.prompt);
       }
@@ -218,8 +226,9 @@ export function TextToImageForm({ onSubmit, disabled = false, onDraftConsumed, o
       gptImageStyle: gptImageAdvancedParams.style,
       gptImageBackground: gptImageAdvancedParams.background,
       parallelCount,
+      tokenBilling: supportsTokenMode(model) ? tokenBilling : false,
     });
-  }, [model, outputSize, customSize, aspectRatio, temperature, gptImageAdvancedParams, parallelCount, settingsReady]);
+  }, [model, outputSize, customSize, aspectRatio, temperature, gptImageAdvancedParams, parallelCount, tokenBilling, settingsReady]);
 
   const removeFromQueue = (id: string) => {
     setQueue(queue.filter((item) => item.id !== id));
@@ -237,7 +246,7 @@ export function TextToImageForm({ onSubmit, disabled = false, onDraftConsumed, o
         customSize,
         aspectRatio,
         temperature,
-        model,
+        model: tokenBilling ? getTokenModelId(model) : model,
         gptImageQuality: gptImageAdvancedParams.quality,
         gptImageStyle: gptImageAdvancedParams.style,
         gptImageBackground: gptImageAdvancedParams.background,
@@ -344,7 +353,7 @@ export function TextToImageForm({ onSubmit, disabled = false, onDraftConsumed, o
 
             <div className="px-3 pt-2 pb-2 sm:px-4">
               <GenerationParamsBar
-                value={{ model, outputSize, customSize, aspectRatio, temperature, parallelCount, gptImageAdvancedParams }}
+                value={{ model, outputSize, customSize, aspectRatio, temperature, parallelCount, gptImageAdvancedParams, tokenBilling }}
                 onChange={handleParamsChange}
               />
             </div>

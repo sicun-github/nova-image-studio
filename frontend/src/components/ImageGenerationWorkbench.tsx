@@ -16,7 +16,7 @@ import { streamPromptOptimize, type StreamPromptOptimizeHandle } from '@/lib/pro
 import { loadJsonFromStorage, saveJsonToStorage } from '@/lib/settings-storage';
 import { requireDefaultConfiguredTextModel } from '@/lib/model-endpoints';
 import { addTextAsset, getAssetBlob, type ImageAsset, type TextAsset } from '@/lib/asset-store';
-import { MODEL_IMAGE_LIMITS, MODEL_OPTIONS, type ModelId } from '@/lib/gemini-config';
+import { getTokenModelId, isTokenModel, MODEL_IMAGE_LIMITS, MODEL_OPTIONS, supportsTokenMode, type ModelId } from '@/lib/gemini-config';
 import {
   DEFAULT_GPT_IMAGE_ADVANCED_PARAMS,
   detectClosestAspectRatio,
@@ -72,6 +72,7 @@ interface ImageGenerationWorkbenchProps {
     aspectRatio?: AspectRatio;
     temperature?: number;
     model?: ModelId;
+    tokenBilling?: boolean;
     gptImageQuality?: GptImageQuality;
     gptImageStyle?: GptImageStyle;
     gptImageBackground?: GptImageBackground;
@@ -119,6 +120,7 @@ export function ImageGenerationWorkbench({
   const [temperature, setTemperature] = useState<number>(1);
   const [gptImageAdvancedParams, setGptImageAdvancedParams] = useState<GptImageAdvancedParams>(DEFAULT_GPT_IMAGE_ADVANCED_PARAMS);
   const [parallelCount, setParallelCount] = useState<ParallelCount>(1);
+  const [tokenBilling, setTokenBilling] = useState(false);
   const [settingsReady, setSettingsReady] = useState(false);
 
   const [isDragOver, setIsDragOver] = useState(false);
@@ -151,6 +153,7 @@ export function ImageGenerationWorkbench({
     if (patch.temperature !== undefined) setTemperature(patch.temperature);
     if (patch.parallelCount !== undefined) setParallelCount(patch.parallelCount);
     if (patch.gptImageAdvancedParams !== undefined) setGptImageAdvancedParams(patch.gptImageAdvancedParams);
+    if (patch.tokenBilling !== undefined) setTokenBilling(patch.tokenBilling);
   }, []);
 
   useEffect(() => {
@@ -190,6 +193,10 @@ export function ImageGenerationWorkbench({
       const nextParallelCount: ParallelCount = useInitial && initialData?.parallelCount && [1, 2, 3, 4].includes(initialData.parallelCount)
         ? initialData.parallelCount
         : (saved.parallelCount && [1, 2, 3, 4].includes(saved.parallelCount) ? saved.parallelCount : 1);
+      const nextTokenBilling = supportsTokenMode(nextModel) && (
+        (useInitial && (initialData?.tokenBilling || isTokenModel(initialData?.model || ''))) ||
+        (!useInitial && Boolean(saved.tokenBilling))
+      );
 
       setModel(nextModel);
       setOutputSize(nextOutputSize);
@@ -198,6 +205,7 @@ export function ImageGenerationWorkbench({
       setTemperature(nextTemperature);
       setGptImageAdvancedParams(nextAdvancedParams);
       setParallelCount(nextParallelCount);
+      setTokenBilling(nextTokenBilling);
       if (useInitial) {
         setPrompt(initialData?.prompt || '');
         setPendingFiles((initialData?.refImages || []).map(img => ({
@@ -230,8 +238,9 @@ export function ImageGenerationWorkbench({
       gptImageStyle: gptImageAdvancedParams.style,
       gptImageBackground: gptImageAdvancedParams.background,
       parallelCount,
+      tokenBilling: supportsTokenMode(model) ? tokenBilling : false,
     });
-  }, [model, outputSize, customSize, aspectRatio, temperature, gptImageAdvancedParams, parallelCount, settingsReady]);
+  }, [model, outputSize, customSize, aspectRatio, temperature, gptImageAdvancedParams, parallelCount, tokenBilling, settingsReady]);
 
   const handleOptimize = useCallback(() => {
     const textModel = requireDefaultConfiguredTextModel('promptOptimize');
@@ -367,7 +376,7 @@ export function ImageGenerationWorkbench({
     } finally {
       setLoading(false);
     }
-  }, [autoLayoutLocked, detectImageAspectRatio, maxImages, model, pendingFiles.length]);
+  }, [autoLayoutLocked, detectImageAspectRatio, maxImages, model, modelLimit.description, pendingFiles.length]);
 
   const handleImportAssets = useCallback(async (selectedAssets: ImageAsset[]) => {
     if (selectedAssets.length === 0) return;
@@ -508,7 +517,7 @@ export function ImageGenerationWorkbench({
   const handleSubmit = () => {
     if (!prompt.trim() || disabled || loading) return;
 
-    const modelWithBilling = model;
+    const modelWithBilling = tokenBilling ? getTokenModelId(model) : model;
     if (pendingFiles.length > 0) {
       onSubmitImage({
         prompt: prompt.trim(),
@@ -649,7 +658,7 @@ export function ImageGenerationWorkbench({
 
             <div className="px-3 pt-2 pb-2 sm:px-4">
               <GenerationParamsBar
-                value={{ model, outputSize, customSize, aspectRatio, temperature, parallelCount, gptImageAdvancedParams }}
+                value={{ model, outputSize, customSize, aspectRatio, temperature, parallelCount, gptImageAdvancedParams, tokenBilling }}
                 onChange={handleParamsChange}
               />
             </div>

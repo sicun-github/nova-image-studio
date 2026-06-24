@@ -1,4 +1,4 @@
-import type { AspectRatio, OutputSize } from '@/lib/gemini-config';
+import { getBaseModelId, getTokenModelId, isTokenModel, type AspectRatio, type OutputSize } from '@/lib/gemini-config';
 import type { GptImageBackground, GptImageQuality, GptImageStyle } from '@/lib/model-capabilities';
 import {
   getCompleteImageModels,
@@ -255,14 +255,14 @@ export async function checkModelsAvailability(
 
 export function resolveImageTaskProvider(modelId: string): { apiKey: string; baseUrl: string; protocol: ProviderProtocol; modelId: string } {
   const registry = loadRegistry();
-  const model = getImageModelById(registry, modelId);
+  const model = getImageModelById(registry, getBaseModelId(modelId));
   if (!model) throw new Error(`未找到图片模型配置: ${modelId}`);
   const normalizedBaseUrl = normalizeModelBaseUrl(model.protocol, model.baseUrl);
   return {
     apiKey: model.apiKey,
     baseUrl: normalizedBaseUrl,
     protocol: model.protocol,
-    modelId: model.modelId,
+    modelId: isTokenModel(modelId) ? getTokenModelId(model.modelId) : model.modelId,
   };
 }
 

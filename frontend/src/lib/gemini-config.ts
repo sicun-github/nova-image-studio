@@ -45,8 +45,10 @@ export function getModelOptions(): ModelOption[] {
 
 export const MODEL_OPTIONS: ModelOption[] = [];
 
+const TOKEN_MODEL_SUFFIX = '-tokens';
+
 function getBuiltinPresetId(modelId: string): BuiltinImagePresetId | undefined {
-  const registryModel = getRegistryImageModels().find((item) => item.id === modelId);
+  const registryModel = getRegistryImageModels().find((item) => item.id === stripTokenSuffix(modelId));
   return registryModel?.builtinPreset;
 }
 
@@ -68,24 +70,28 @@ export function getModelImageLimits(): Record<string, ModelImageLimit> {
 
 export const MODEL_IMAGE_LIMITS: Record<string, ModelImageLimit> = {};
 
-export function supportsTokenMode(_modelId: string): boolean {
-  return false;
+export function supportsTokenMode(modelId: string): boolean {
+  const presetId = getBuiltinPresetId(modelId) || stripTokenSuffix(modelId);
+  return String(presetId) === 'gpt-image-2-pro';
 }
 
 export function stripTokenSuffix(modelId: string): string {
-  return modelId;
+  return modelId.endsWith(TOKEN_MODEL_SUFFIX)
+    ? modelId.slice(0, -TOKEN_MODEL_SUFFIX.length)
+    : modelId;
 }
 
 export function isTokenModel(modelId: string): boolean {
-  return false;
+  return modelId.endsWith(TOKEN_MODEL_SUFFIX);
 }
 
 export function getTokenModelId(modelId: string): string {
-  return modelId;
+  const baseModelId = stripTokenSuffix(modelId);
+  return supportsTokenMode(baseModelId) ? `${baseModelId}${TOKEN_MODEL_SUFFIX}` : modelId;
 }
 
 export function getBaseModelId(modelId: string): ModelId {
-  return modelId;
+  return stripTokenSuffix(modelId);
 }
 
 export function getDefaultModelId(): string {
