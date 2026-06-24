@@ -59,6 +59,7 @@ interface PersistedSettings {
   loopCount: number;
   closedLoop: boolean;
   framePadding: number;
+  autoAlignFrames: boolean;
   gptImageQuality: GptImageQuality;
   gptImageStyle: GptImageStyle;
   gptImageBackground: GptImageBackground;
@@ -76,6 +77,7 @@ export function GifGenerationWorkspace({ wideMode = false, hasApiKey, onConfigur
   const [frameDelayMs, setFrameDelayMs] = useState<number>(GIF_DEFAULT_FRAME_DELAY_MS);
   const [loopCount, setLoopCount] = useState<number>(GIF_DEFAULT_LOOP_COUNT);
   const [framePadding, setFramePadding] = useState<number>(GIF_DEFAULT_FRAME_PADDING);
+  const [autoAlignFrames, setAutoAlignFrames] = useState(true);
   const [refFiles, setRefFiles] = useState<GifUploadedRef[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -174,6 +176,9 @@ export function GifGenerationWorkspace({ wideMode = false, hasApiKey, onConfigur
       if (typeof saved.framePadding === 'number' && saved.framePadding >= 0 && saved.framePadding <= GIF_MAX_FRAME_PADDING) {
         setFramePadding(saved.framePadding);
       }
+      if (typeof saved.autoAlignFrames === 'boolean') {
+        setAutoAlignFrames(saved.autoAlignFrames);
+      }
       setSettingsReady(true);
     });
 
@@ -191,11 +196,12 @@ export function GifGenerationWorkspace({ wideMode = false, hasApiKey, onConfigur
       frameDelayMs,
       loopCount,
       framePadding,
+      autoAlignFrames,
       gptImageQuality: gptImageAdvancedParams.quality,
       gptImageStyle: gptImageAdvancedParams.style,
       gptImageBackground: gptImageAdvancedParams.background,
     });
-  }, [model, loop, closedLoop, frameDelayMs, loopCount, framePadding, gptImageAdvancedParams, settingsReady]);
+  }, [model, loop, closedLoop, frameDelayMs, loopCount, framePadding, autoAlignFrames, gptImageAdvancedParams, settingsReady]);
 
   useEffect(() => {
     if (!workflow.startedAt || (workflow.job?.status !== 'generating_grid' && workflow.job?.status !== 'generating_gif')) {
@@ -328,7 +334,8 @@ export function GifGenerationWorkspace({ wideMode = false, hasApiKey, onConfigur
     frameDelayMs,
     loopCount,
     framePadding,
-  }), [prompt, loop, closedLoop, model, gptImageAdvancedParams, refFiles, frameDelayMs, loopCount, framePadding]);
+    autoAlignFrames,
+  }), [prompt, loop, closedLoop, model, gptImageAdvancedParams, refFiles, frameDelayMs, loopCount, framePadding, autoAlignFrames]);
 
   const performSubmit = useCallback(async () => {
     if (!hasApiKey) {
@@ -372,8 +379,9 @@ export function GifGenerationWorkspace({ wideMode = false, hasApiKey, onConfigur
       frameDelayMs,
       loopCount,
       framePadding,
+      autoAlignFrames,
     });
-  }, [workflow, loop, frameDelayMs, loopCount, framePadding]);
+  }, [workflow, loop, frameDelayMs, loopCount, framePadding, autoAlignFrames]);
 
   const handleTuneGenerate = useCallback(async () => {
     setModeChoiceOpen(false);
@@ -394,8 +402,8 @@ export function GifGenerationWorkspace({ wideMode = false, hasApiKey, onConfigur
   }, [workflow.gridImageUrl, onError]);
 
   const handleTunerGenerate = useCallback((frames: ImageData[]) => {
-    workflow.encodeTunedGif(frames, { loop, frameDelayMs, loopCount, framePadding });
-  }, [workflow, loop, frameDelayMs, loopCount, framePadding]);
+    workflow.encodeTunedGif(frames, { loop, frameDelayMs, loopCount, framePadding, autoAlignFrames });
+  }, [workflow, loop, frameDelayMs, loopCount, framePadding, autoAlignFrames]);
 
   const handleTunerClose = useCallback(() => {
     setTunerOpen(false);
@@ -488,6 +496,8 @@ export function GifGenerationWorkspace({ wideMode = false, hasApiKey, onConfigur
           onLoopCountChange={setLoopCount}
           framePadding={framePadding}
           onFramePaddingChange={setFramePadding}
+          autoAlignFrames={autoAlignFrames}
+          onAutoAlignFramesChange={setAutoAlignFrames}
           onOpenPreview={() => setPreviewOpen(true)}
           onEncodeGif={handleEncodeGif}
           onDownloadAgain={() => workflow.downloadGif()}

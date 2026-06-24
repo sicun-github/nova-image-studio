@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { ImageGenerationWorkbench } from '@/components/ImageGenerationWorkbench';
+import { GifGenerationWorkspace } from '@/components/GifGenerationWorkspace';
 import { ReversePromptForm } from '@/components/ReversePromptForm';
 import { AgentChatWorkspace } from '@/components/agent/AgentChatWorkspace';
 import { AssetsWorkspace } from '@/components/assets/AssetsWorkspace';
@@ -43,7 +44,7 @@ import {
 import { cn } from '@/lib/utils';
 import { BA_RANDOM_URL, BING_WALLPAPER_URL } from '@/lib/constants';
 
-type WorkspaceTab = 'image-generation' | 'agent' | 'assets' | 'reverse-prompt' | 'prompt-gallery';
+type WorkspaceTab = 'image-generation' | 'gif' | 'agent' | 'assets' | 'reverse-prompt' | 'prompt-gallery';
 
 export function WorkspaceShell() {
   const queueStatus = useQueueStatus();
@@ -257,7 +258,7 @@ export function WorkspaceShell() {
                   aria-label="知意图 logo"
                 >
                   <img
-                    src="/favicon.png"
+                    src="/zyt-logo.gif"
                     alt="知意图"
                     className="h-8 w-8 shrink-0 rounded-lg object-cover ring-1 ring-border/60"
                   />
@@ -395,6 +396,16 @@ export function WorkspaceShell() {
                   wideMode={wideMode}
                   disabled={!workspace.hasApiKey}
                   onConfigureApiKey={() => setSettingsOpen(true)}
+                />
+              </TabsContent>
+
+              <TabsContent value="gif" keepMounted className={cn(wideMode ? 'space-y-6 xl:min-h-0 xl:flex xl:flex-col' : 'space-y-6')}>
+                <GifGenerationWorkspace
+                  wideMode={wideMode}
+                  hasApiKey={workspace.hasApiKey}
+                  onConfigureApiKey={() => setSettingsOpen(true)}
+                  onError={setError}
+                  showToast={showToast}
                 />
               </TabsContent>
 

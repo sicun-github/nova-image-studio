@@ -43,6 +43,7 @@ export interface SubmitInput {
   frameDelayMs: number;
   loopCount: number;
   framePadding: number;
+  autoAlignFrames: boolean;
 }
 
 export interface UseGifWorkflowResult {
@@ -67,6 +68,7 @@ export interface GifEncodeParams {
   frameDelayMs: number;
   loopCount: number;
   framePadding: number;
+  autoAlignFrames: boolean;
 }
 
 function buildImageReferences(template: { data: string; mimeType: string }, refs: RefImageData[]): ImageReference[] {
@@ -322,6 +324,7 @@ export function useGifWorkflow(): UseGifWorkflowResult {
       frameDelayMs: input.frameDelayMs,
       loopCount: input.loopCount,
       framePadding: input.framePadding,
+      autoAlignFrames: input.autoAlignFrames,
       createdAt: nowIso(),
       updatedAt: nowIso(),
     };
@@ -387,6 +390,7 @@ export function useGifWorkflow(): UseGifWorkflowResult {
       frameDelayMs: params.frameDelayMs,
       loopCount: params.loopCount,
       framePadding: params.framePadding,
+      autoAlignFrames: params.autoAlignFrames,
       updatedAt: nowIso(),
     }));
 
@@ -396,6 +400,7 @@ export function useGifWorkflow(): UseGifWorkflowResult {
         frameDelayMs: params.frameDelayMs,
         repeat,
         framePaddingPercent: params.framePadding,
+        autoAlignFrames: params.autoAlignFrames,
       });
       setGifBlob(blob);
       triggerGifDownload(blob, `gif-${current.id}.gif`);
@@ -417,6 +422,7 @@ export function useGifWorkflow(): UseGifWorkflowResult {
       frameDelayMs: params.frameDelayMs,
       loopCount: params.loopCount,
       framePadding: params.framePadding,
+      autoAlignFrames: params.autoAlignFrames,
       updatedAt: nowIso(),
     }));
     try {
@@ -424,6 +430,7 @@ export function useGifWorkflow(): UseGifWorkflowResult {
       const blob = encodeFramesToGif(frames, {
         frameDelayMs: params.frameDelayMs,
         repeat,
+        autoAlignFrames: false,
       });
       setGifBlob(blob);
       triggerGifDownload(blob, `gif-${current.id}.gif`);

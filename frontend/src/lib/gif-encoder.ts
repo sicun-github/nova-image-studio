@@ -7,6 +7,8 @@ export interface EncodeGifOptions {
   repeat: number;
   /** 用户自定义内缩百分比（0-5），从每帧四周等比例裁掉 */
   framePaddingPercent?: number;
+  /** 自动检测主体边界并把主体对齐到画布中心 */
+  autoAlignFrames?: boolean;
 }
 
 export interface GridCell {
@@ -28,6 +30,12 @@ interface FrameSource {
   sy: number;
   sw: number;
   sh: number;
+}
+
+interface RgbColor {
+  r: number;
+  g: number;
+  b: number;
 }
 
 function loadImageElement(src: string): Promise<HTMLImageElement> {
@@ -53,6 +61,112 @@ function createCanvasContext(width: number, height: number): CanvasRenderingCont
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function colorDistance(data: Uint8ClampedArray, index: number, color: RgbColor): number {
+  const dr = data[index] - color.r;
+  const dg = data[index + 1] - color.g;
+  const db = data[index + 2] - color.b;
+  return Math.sqrt(dr * dr + dg * dg + db * db);
+}
+
+function estimateBackgroundColor(data: Uint8ClampedArray, width: number, height: number): RgbColor {
+  const samples: [number, number][] = [
+    [0, 0],
+    [width - 1, 0],
+    [0, height - 1],
+    [width - 1, height - 1],
+    [Math.floor(width / 2), 0],
+    [Math.floor(width / 2), height - 1],
+    [0, Math.floor(height / 2)],
+    [width - 1, Math.floor(height / 2)],
+  ];
+  const total = samples.reduce((acc, [x, y]) => {
+    const index = (y * width + x) * 4;
+    acc.r += data[index];
+    acc.g += data[index + 1];
+    acc.b += data[index + 2];
+    return acc;
+  }, { r: 0, g: 0, b: 0 });
+
+  return {
+    r: Math.round(total.r / samples.length),
+    g: Math.round(total.g / samples.length),
+    b: Math.round(total.b / samples.length),
+  };
+}
+
+function alignFrameToSubject(imageData: ImageData): ImageData {
+  const { width, height, data } = imageData;
+  const background = estimateBackgroundColor(data, width, height);
+  const threshold = 26;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  let foregroundPixels = 0;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const index = (y * width + x) * 4;
+      if (data[index + 3] > 12 && colorDistance(data, index, background) > threshold) {
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+        foregroundPixels++;
+      }
+    }
+  }
+
+  if (foregroundPixels === 0) return imageData;
+
+  const subjectW = maxX - minX + 1;
+  const subjectH = maxY - minY + 1;
+  const foregroundRatio = foregroundPixels / (width * height);
+  if (
+    foregroundRatio > 0.82
+    || subjectW > width * 0.92
+    || subjectH > height * 0.92
+    || subjectW < width * 0.12
+    || subjectH < height * 0.12
+  ) {
+    return imageData;
+  }
+
+  const subjectCenterX = (minX + maxX) / 2;
+  const subjectCenterY = (minY + maxY) / 2;
+  const maxShiftX = Math.round(width * 0.18);
+  const maxShiftY = Math.round(height * 0.18);
+  const shiftX = clamp(Math.round(width / 2 - subjectCenterX), -maxShiftX, maxShiftX);
+  const shiftY = clamp(Math.round(height / 2 - subjectCenterY), -maxShiftY, maxShiftY);
+
+  if (Math.abs(shiftX) <= 1 && Math.abs(shiftY) <= 1) return imageData;
+
+  const aligned = new ImageData(width, height);
+  for (let index = 0; index < aligned.data.length; index += 4) {
+    aligned.data[index] = background.r;
+    aligned.data[index + 1] = background.g;
+    aligned.data[index + 2] = background.b;
+    aligned.data[index + 3] = 255;
+  }
+
+  for (let y = 0; y < height; y++) {
+    const targetY = y + shiftY;
+    if (targetY < 0 || targetY >= height) continue;
+    for (let x = 0; x < width; x++) {
+      const targetX = x + shiftX;
+      if (targetX < 0 || targetX >= width) continue;
+      const sourceIndex = (y * width + x) * 4;
+      const targetIndex = (targetY * width + targetX) * 4;
+      aligned.data[targetIndex] = data[sourceIndex];
+      aligned.data[targetIndex + 1] = data[sourceIndex + 1];
+      aligned.data[targetIndex + 2] = data[sourceIndex + 2];
+      aligned.data[targetIndex + 3] = data[sourceIndex + 3];
+    }
+  }
+
+  return aligned;
 }
 
 /**
@@ -161,7 +275,8 @@ export async function encodeGifFromGrid(
     const safeSy = clamp(src.sy, 0, naturalHeight - cellH);
     frameCtx.clearRect(0, 0, cellW, cellH);
     frameCtx.drawImage(img, safeSx, safeSy, cellW, cellH, 0, 0, cellW, cellH);
-    frames.push(frameCtx.getImageData(0, 0, cellW, cellH).data);
+    const frame = frameCtx.getImageData(0, 0, cellW, cellH);
+    frames.push((options.autoAlignFrames === false ? frame : alignFrameToSubject(frame)).data);
   }
 
   return encodeFramesToBlob(frames, cellW, cellH, options);

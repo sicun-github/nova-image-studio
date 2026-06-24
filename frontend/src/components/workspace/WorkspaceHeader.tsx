@@ -136,7 +136,7 @@ export const WorkspaceHeader = forwardRef<WorkspaceHeaderRef, WorkspaceHeaderPro
             aria-label="知意图 logo"
           >
             <img
-              src="/favicon.png"
+              src="/zyt-logo.gif"
               alt="知意图 logo"
               className="h-8 w-8 flex-shrink-0 rounded-lg object-cover ring-1 ring-border/60 sm:h-11 sm:w-11 sm:rounded-xl"
             />

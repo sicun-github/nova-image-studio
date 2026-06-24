@@ -29,6 +29,7 @@ export interface ActiveGifJob {
   frameDelayMs: number;
   loopCount: number;
   framePadding: number;
+  autoAlignFrames?: boolean;
   error?: string;
   createdAt: string;
   updatedAt: string;
@@ -36,6 +37,7 @@ export interface ActiveGifJob {
 
 const STORAGE_KEY = 'nova-gif-active-job';
 const TEMPLATE_URL = '/togif.png';
+const PREFERRED_GIF_MODEL_ID = 'gpt-image-2-plus';
 
 export const GIF_MAX_REF_IMAGES = 6;
 export const GIF_DEFAULT_FRAME_DELAY_MS = 120;
@@ -123,14 +125,23 @@ export function needsOverwriteConfirm(job: ActiveGifJob | null): boolean {
 
 export function getGifCompatibleModels(): { value: GifModel; label: string }[] {
   const registry = loadRegistry();
-  return getCompleteImageModels(registry)
+  const models = getCompleteImageModels(registry)
     .filter((model) => isGptImageModel(model.id) && supportsCustomSize(model.id) && model.maxOutputSize === '4K')
     .map((model) => ({ value: model.id, label: model.name }));
+  return models.sort((a, b) => {
+    if (a.value === PREFERRED_GIF_MODEL_ID) return -1;
+    if (b.value === PREFERRED_GIF_MODEL_ID) return 1;
+    return 0;
+  });
 }
 
 export function getDefaultGifModelId(): GifModel {
   const registry = loadRegistry();
   const options = getGifCompatibleModels();
+  const preferredGifModel = options.find((option) => option.value === PREFERRED_GIF_MODEL_ID);
+  if (preferredGifModel) {
+    return preferredGifModel.value;
+  }
   const preferred = getDefaultImageModel(registry, 'textToImage');
   if (preferred && options.some((option) => option.value === preferred.id)) {
     return preferred.id;

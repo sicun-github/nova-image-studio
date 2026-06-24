@@ -12,6 +12,7 @@ import {
   Repeat,
   Repeat1,
   RotateCcw,
+  Target,
   Thermometer,
   Timer,
   X,
@@ -40,6 +41,8 @@ export interface GifReviewPanelProps {
   onLoopCountChange: (value: number) => void;
   framePadding: number;
   onFramePaddingChange: (value: number) => void;
+  autoAlignFrames: boolean;
+  onAutoAlignFramesChange: (value: boolean) => void;
   onOpenPreview: () => void;
   onEncodeGif: () => void;
   onDownloadAgain: () => void;
@@ -218,11 +221,26 @@ export function GifReviewPanel(props: GifReviewPanelProps) {
 
                 <button
                   type="button"
+                  onClick={() => props.onAutoAlignFramesChange(!props.autoAlignFrames)}
+                  className={cn(
+                    buttonVariants({ variant: 'ghost', size: 'xs' }),
+                    'gap-1',
+                    props.autoAlignFrames ? 'text-primary' : 'text-muted-foreground',
+                  )}
+                  title="主体居中：合成 GIF 时自动把每帧主体对齐到画布中心"
+                >
+                  <Target className="h-3.5 w-3.5" />
+                  <span className="font-medium">{props.autoAlignFrames ? '主体居中' : '原始位置'}</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => {
                     props.onLoopToggle(true);
                     props.onFrameDelayChange(120);
                     props.onLoopCountChange(0);
-                    props.onFramePaddingChange(2.0);
+                    props.onFramePaddingChange(1.5);
+                    props.onAutoAlignFramesChange(true);
                   }}
                   className={cn(buttonVariants({ variant: 'ghost', size: 'xs' }), 'gap-1 text-muted-foreground')}
                   title="重置 GIF 参数为默认值"
