@@ -42,6 +42,7 @@ import {
   type SubmitActions,
 } from '@/lib/workspace-task-service';
 import { cn } from '@/lib/utils';
+import { withBasePath } from '@/lib/base-path';
 import { BA_RANDOM_URL, BING_WALLPAPER_URL } from '@/lib/constants';
 
 type WorkspaceTab = 'image-generation' | 'gif' | 'agent' | 'assets' | 'reverse-prompt' | 'prompt-gallery';
@@ -258,7 +259,7 @@ export function WorkspaceShell() {
                   aria-label="知意图 logo"
                 >
                   <img
-                    src="/zyt-logo.gif"
+                    src={withBasePath('/zyt-logo.gif')}
                     alt="知意图"
                     className="h-8 w-8 shrink-0 rounded-lg object-cover ring-1 ring-border/60"
                   />

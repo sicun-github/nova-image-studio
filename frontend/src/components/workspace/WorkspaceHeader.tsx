@@ -4,6 +4,7 @@ import { Copy, Download, ImagePlus, Maximize2, Settings, Wand2, X, Shuffle, User
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, useId, forwardRef, useImperativeHandle } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { withBasePath } from '@/lib/base-path';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { WideModeToggle } from '@/components/WideModeToggle';
 import type { NovaQueueStatus } from '@/lib/ccode-task-client';
@@ -136,7 +137,7 @@ export const WorkspaceHeader = forwardRef<WorkspaceHeaderRef, WorkspaceHeaderPro
             aria-label="知意图 logo"
           >
             <img
-              src="/zyt-logo.gif"
+              src={withBasePath('/zyt-logo.gif')}
               alt="知意图 logo"
               className="h-8 w-8 flex-shrink-0 rounded-lg object-cover ring-1 ring-border/60 sm:h-11 sm:w-11 sm:rounded-xl"
             />

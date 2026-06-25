@@ -272,6 +272,15 @@ backend/blacklist.json
 backend/.env          # 按生产环境调整
 ```
 
+注意：
+
+- `frontend/out/` 必须整目录同步，不能只上传 `server.js` 或只更新后端文件。
+- 如果项目部署在子路径，例如 `/images`，必须同步完整 `frontend/out/_next/`，否则页面会出现 `js/css 404`。
+- 部署完成后，至少抽查这几个地址是否返回 `200`：
+  - `/images/_next/static/css/...`
+  - `/images/zyt-logo.gif`
+  - `/images/manifest.json`
+
 ### 3. 在生产服务器
 
 ```bash

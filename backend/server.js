@@ -85,6 +85,15 @@ function normalizeBaseUrl(url) {
   return String(url || '').trim().replace(/\/+$/, '');
 }
 
+function normalizeBasePath(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  const stripped = trimmed.replace(/^\/+|\/+$/g, '');
+  return stripped ? `/${stripped}` : '';
+}
+
+const APP_BASE_PATH = normalizeBasePath(process.env.NEXT_PUBLIC_BASE_PATH || process.env.NOVA_BASE_PATH || '/images');
+
 function getLanAccessUrls(port) {
   const interfaces = os.networkInterfaces();
   const urls = [];
@@ -883,13 +892,17 @@ function serveStatic(req, res, pathname) {
   const normalizedPath = path.normalize(decodedPath);
   if (normalizedPath.includes('..')) return false;
 
+  const staticPath = APP_BASE_PATH && (normalizedPath === APP_BASE_PATH || normalizedPath.startsWith(`${APP_BASE_PATH}/`))
+    ? normalizedPath.slice(APP_BASE_PATH.length) || '/'
+    : normalizedPath;
+
   const candidates = [];
-  if (normalizedPath.endsWith('/') || normalizedPath.endsWith(path.sep)) {
-    candidates.push(path.join(STATIC_DIR, normalizedPath, 'index.html'));
+  if (staticPath.endsWith('/') || staticPath.endsWith(path.sep)) {
+    candidates.push(path.join(STATIC_DIR, staticPath, 'index.html'));
   } else {
-    candidates.push(path.join(STATIC_DIR, normalizedPath));
-    candidates.push(path.join(STATIC_DIR, `${normalizedPath}.html`));
-    candidates.push(path.join(STATIC_DIR, normalizedPath, 'index.html'));
+    candidates.push(path.join(STATIC_DIR, staticPath));
+    candidates.push(path.join(STATIC_DIR, `${staticPath}.html`));
+    candidates.push(path.join(STATIC_DIR, staticPath, 'index.html'));
   }
 
   const staticDirResolved = path.resolve(STATIC_DIR) + path.sep;

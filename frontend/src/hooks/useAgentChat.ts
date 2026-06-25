@@ -614,6 +614,7 @@ export function useAgentChat() {
       prompt: string;
       analysisFallbackReason: string;
       proposalData: AgentMessage['proposalData'];
+      startedAt?: number;
     },
   ): Promise<void> => {
     const descController = new AbortController();
@@ -672,6 +673,7 @@ export function useAgentChat() {
       imageIds: imgIds,
       taskId: ctx.taskId,
       proposalData: ctx.proposalData,
+      generationStartedAt: ctx.startedAt,
       createdAt: Date.now(),
     });
     void clearPendingGeneration();
@@ -695,6 +697,7 @@ export function useAgentChat() {
         taskId: data.taskId,
         prompt: data.proposal.prompt,
         analysisFallbackReason: data.proposal.reason || '',
+        startedAt: data.startedAt,
         proposalData: {
           action: data.selectedImageIds.length > 0 ? 'edit' : 'generate',
           prompt: data.proposal.prompt,
@@ -853,6 +856,7 @@ export function useAgentChat() {
         taskId,
         prompt,
         analysisFallbackReason: proposalRef.current?.reason || '',
+        startedAt,
         proposalData: {
           action: selectedImageIds.length > 0 ? 'edit' : 'generate',
           prompt,

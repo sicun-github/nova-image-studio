@@ -3,6 +3,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Script from "next/script";
 import { ServiceWorkerManager } from "@/components/ServiceWorkerManager";
+import { withBasePath } from "@/lib/base-path";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -10,14 +11,14 @@ export const metadata: Metadata = {
   description: "知意图，懂你想法的 AI 图像生成工作台",
   icons: {
     icon: [
-      { url: '/favicon.gif', type: 'image/gif' },
-      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+      { url: withBasePath('/favicon.gif'), type: 'image/gif' },
+      { url: withBasePath('/icon-192.png'), sizes: '192x192', type: 'image/png' },
+      { url: withBasePath('/icon-512.png'), sizes: '512x512', type: 'image/png' },
     ],
-    shortcut: '/favicon.gif',
-    apple: '/icon-192.png',
+    shortcut: withBasePath('/favicon.gif'),
+    apple: withBasePath('/icon-192.png'),
   },
-  manifest: '/manifest.json',
+  manifest: withBasePath('/manifest.json'),
   other: {
     'theme-color': '#875C27',
   },

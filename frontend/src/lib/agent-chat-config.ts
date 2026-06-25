@@ -28,6 +28,8 @@ export interface AgentMessage {
   proposalData?: AgentProposalData;
   /** 该消息是否使用了联网搜索 */
   webSearchUsed?: boolean;
+  /** 生图请求创建时间，用于生成结果消息展示耗时 */
+  generationStartedAt?: number;
   createdAt: number;
 }
 

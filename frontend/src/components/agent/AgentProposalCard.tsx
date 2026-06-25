@@ -375,14 +375,15 @@ export function AgentProposalCard({
                   >
                     {option.label}
                   </button>
-                  <Switch
-                    checked={optionTokenBilling}
-                    disabled={!optionSupportsTokenMode}
-                    onClick={(event) => event.stopPropagation()}
-                    onCheckedChange={(checked) => handleModelChange(option.value, checked)}
-                    aria-label={`${option.label} 按量计费`}
-                    className="mr-1.5 scale-75"
-                  />
+                  {optionSupportsTokenMode && (
+                    <Switch
+                      checked={optionTokenBilling}
+                      onClick={(event) => event.stopPropagation()}
+                      onCheckedChange={(checked) => handleModelChange(option.value, checked)}
+                      aria-label={`${option.label} 按量计费`}
+                      className="mr-1.5 scale-75"
+                    />
+                  )}
                 </div>
               );
             })}

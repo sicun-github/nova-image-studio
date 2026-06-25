@@ -24,6 +24,7 @@ import { cn, clampIndex } from '@/lib/utils';
 import { renderReasoning, renderMarkdown } from '@/lib/render-reasoning';
 import { handleMarkdownCodeCopyButtonClick } from '@/lib/markdown-code-copy';
 import { getAgentImageBytes } from '@/lib/agent-context-store';
+import { getModelDisplayName } from '@/lib/model-capabilities';
 import type { AgentMessage, AgentImageRecord } from '@/lib/agent-chat-config';
 import type { ImageActionPayload } from '@/lib/image-actions';
 
@@ -55,6 +56,17 @@ function getAgentImageSourceLabel(source: AgentImageRecord['source']): string {
   if (source === 'generated') return 'Agent 生成图片';
   if (source === 'asset') return '素材库导入';
   return 'Agent 上传图片';
+}
+
+function formatMessageMetaTime(value: number): string {
+  return new Date(value).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
 }
 
 export function AgentMessageBubble({
@@ -187,6 +199,12 @@ export function AgentMessageBubble({
   const linkedImages = (message.imageIds || [])
     .map(id => imageMap.get(id))
     .filter((img): img is AgentImageRecord => Boolean(img));
+  const generatedModelLabel = !isUser && message.proposalData?.model
+    ? getModelDisplayName(message.proposalData.model)
+    : null;
+  const generationElapsedSeconds = generatedModelLabel && message.generationStartedAt
+    ? Math.max(0, Math.round((message.createdAt - message.generationStartedAt) / 1000))
+    : null;
 
   return (
     <div className={cn('flex gap-2.5 group/message', isUser && 'flex-row-reverse')}>
@@ -284,8 +302,26 @@ export function AgentMessageBubble({
 
         <div className={cn('mt-1 flex items-center gap-1.5 opacity-0 transition-opacity group-hover/message:opacity-100', isUser && 'self-end')}>
           <span className="text-[10px] text-muted-foreground/70 tabular-nums select-none">
-            {new Date(message.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            {generatedModelLabel && message.generationStartedAt ? `创建 ${formatMessageMetaTime(message.generationStartedAt)} ` : ''}
+            {generatedModelLabel ? '完成 ' : ''}
+            {formatMessageMetaTime(message.createdAt)}
           </span>
+          {generationElapsedSeconds !== null && (
+            <>
+              <span className="h-3 w-px bg-border/50" />
+              <span className="text-[10px] text-muted-foreground/70 tabular-nums select-none">
+                耗时 {generationElapsedSeconds}秒
+              </span>
+            </>
+          )}
+          {generatedModelLabel && (
+            <>
+              <span className="h-3 w-px bg-border/50" />
+              <span className="max-w-56 truncate text-[10px] text-muted-foreground/70 select-none" title={generatedModelLabel}>
+                模型 {generatedModelLabel}
+              </span>
+            </>
+          )}
           <span className="h-3 w-px bg-border/50" />
           <button
             type="button"

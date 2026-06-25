@@ -43,6 +43,8 @@ for (const file of BACKEND_FILES) {
 }
 
 // Copy frontend out/ folder into temp/frontend/out/
+// 注意：生产部署必须携带完整 out/，包括 _next/static/css、JS、manifest、图标等，
+// 否则挂载到 /images 这类子路径时会出现静态资源 404。
 const TEMP_FRONTEND = path.join(TEMP_DIR, 'frontend');
 fs.mkdirSync(TEMP_FRONTEND, { recursive: true });
 fs.cpSync(FRONTEND_OUT_DIR.src, path.join(TEMP_FRONTEND, 'out'), { recursive: true });
