@@ -146,25 +146,18 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
   const intentRecognition = agent.intentRecognition;
 
   // ===== 用户参数状态（持久化到 localStorage）=====
-  const savedParams = loadJsonFromStorage<AgentParamsSettings>(AGENT_PARAMS_KEY);
-  const savedUserModel = savedParams.model || agent.imageModel;
-  const initialUserModel = getBaseModelId(savedUserModel);
+  const initialUserModel = getBaseModelId(agent.imageModel);
+  const [paramsReady, setParamsReady] = useState(false);
   const [userModel, setUserModel] = useState<ModelId>(initialUserModel);
-  const [userOutputSize, setUserOutputSize] = useState<OutputSize>(savedParams.outputSize || '1K');
-  const [userAspectRatio, setUserAspectRatio] = useState<AspectRatio>(savedParams.aspectRatio || '1:1');
-  const [userTemperature, setUserTemperature] = useState<number>(savedParams.temperature ?? 1);
+  const [userOutputSize, setUserOutputSize] = useState<OutputSize>('1K');
+  const [userAspectRatio, setUserAspectRatio] = useState<AspectRatio>('1:1');
+  const [userTemperature, setUserTemperature] = useState<number>(1);
   const [userAdvancedParams, setUserAdvancedParams] = useState<GptImageAdvancedParams>(() =>
-    getGptImageAdvancedParamsForModel(initialUserModel, {
-      quality: savedParams.gptImageQuality,
-      style: savedParams.gptImageStyle,
-      background: savedParams.gptImageBackground,
-    })
+    getGptImageAdvancedParamsForModel(initialUserModel)
   );
-  const [userParallelCount, setUserParallelCount] = useState<ParallelCount>((savedParams.parallelCount as ParallelCount) ?? 1);
-  const [userCustomSize, setUserCustomSize] = useState<string | undefined>(savedParams.customSize);
-  const [userTokenBilling, setUserTokenBilling] = useState(
-    supportsTokenMode(initialUserModel) && (Boolean(savedParams.tokenBilling) || isTokenModel(savedUserModel))
-  );
+  const [userParallelCount, setUserParallelCount] = useState<ParallelCount>(1);
+  const [userCustomSize, setUserCustomSize] = useState<string | undefined>(undefined);
+  const [userTokenBilling, setUserTokenBilling] = useState(false);
   const [customSizeDialogOpen, setCustomSizeDialogOpen] = useState(false);
 
   const supportsTemperature = getSupportsTemperature(userModel);
@@ -185,8 +178,28 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
     if (!supportsCustomSize(nextModel)) setUserCustomSize(undefined);
   }, [userAspectRatio, userOutputSize, userTokenBillingEnabled]);
 
+  useEffect(() => {
+    const savedParams = loadJsonFromStorage<AgentParamsSettings>(AGENT_PARAMS_KEY);
+    const savedUserModel = savedParams.model || agent.imageModel;
+    const nextModel = getBaseModelId(savedUserModel);
+    setUserModel(nextModel);
+    setUserOutputSize(savedParams.outputSize || '1K');
+    setUserAspectRatio(savedParams.aspectRatio || '1:1');
+    setUserTemperature(savedParams.temperature ?? 1);
+    setUserAdvancedParams(getGptImageAdvancedParamsForModel(nextModel, {
+      quality: savedParams.gptImageQuality,
+      style: savedParams.gptImageStyle,
+      background: savedParams.gptImageBackground,
+    }));
+    setUserParallelCount((savedParams.parallelCount as ParallelCount) ?? 1);
+    setUserCustomSize(savedParams.customSize);
+    setUserTokenBilling(supportsTokenMode(nextModel) && (Boolean(savedParams.tokenBilling) || isTokenModel(savedUserModel)));
+    setParamsReady(true);
+  }, [agent.imageModel]);
+
   // 参数变化时自动持久化
   useEffect(() => {
+    if (!paramsReady) return;
     saveJsonToStorage(AGENT_PARAMS_KEY, {
       model: userModel,
       outputSize: userOutputSize,
@@ -199,7 +212,7 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
       customSize: userCustomSize,
       tokenBilling: userTokenBillingEnabled,
     });
-  }, [userModel, userOutputSize, userAspectRatio, userTemperature, userAdvancedParams, userParallelCount, userCustomSize, userTokenBillingEnabled]);
+  }, [userModel, userOutputSize, userAspectRatio, userTemperature, userAdvancedParams, userParallelCount, userCustomSize, userTokenBillingEnabled, paramsReady]);
 
   // Popover 开关状态（用于选择后自动关闭）
   const [modelPopoverOpen, setModelPopoverOpen] = useState(false);

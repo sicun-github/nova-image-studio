@@ -172,7 +172,7 @@ async function resultImageToBlob(ref: string): Promise<Blob> {
 
 export function useAgentChat() {
   const [ready, setReady] = useState(false);
-  const [hasApiKey] = useState(() => hasAnyApiKey());
+  const [hasApiKey, setHasApiKey] = useState(false);
   const [phase, setPhase] = useState<AgentPhase>('idle');
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [images, setImages] = useState<AgentImageRecord[]>([]);
@@ -215,6 +215,10 @@ export function useAgentChat() {
       throw new Error('当前 Agent 仅支持 OpenAI Response 文本模型');
     }
     return configured;
+  }, []);
+
+  useEffect(() => {
+    setHasApiKey(hasAnyApiKey());
   }, []);
 
   // ===== 流式更新批处理（rAF 节流） =====

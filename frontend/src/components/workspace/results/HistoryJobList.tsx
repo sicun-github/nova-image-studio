@@ -239,10 +239,9 @@ function VirtualJobList({
   return (
     <div
       ref={parentRef}
-      className={cn('relative virtual-scroll-container', wideMode && 'min-h-0 flex-1')}
+      className={cn('relative min-h-0 flex-1 virtual-scroll-container')}
       style={{
-        height: wideMode ? undefined : (jobs.length > 3 ? '70vh' : 'auto'),
-        maxHeight: wideMode ? undefined : '70vh',
+        height: '100%',
         minHeight: jobs.length > 0 ? '200px' : '0',
         overflow: 'auto',
         overflowX: 'hidden',
@@ -378,7 +377,7 @@ export function HistoryJobList({
   };
 
   return (
-    <section className={cn(wideMode ? 'flex h-full min-h-0 flex-col space-y-4' : 'space-y-3')}>
+    <section className={cn('min-h-0', wideMode ? 'flex h-full flex-col space-y-4' : 'flex flex-1 flex-col space-y-3 overflow-hidden')}>
       <JobsHeader
         title={title}
         jobsList={jobs}

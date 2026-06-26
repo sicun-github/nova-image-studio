@@ -2128,7 +2128,12 @@ const startServer = () => {
       res.end('Not Found');
       return;
     }
-    handle(req, res, req.url || '/');
+    const nextParsedUrl = {
+      pathname: parsedUrl.pathname || '/',
+      query: Object.fromEntries(parsedUrl.searchParams.entries()),
+      search: parsedUrl.search || '',
+    };
+    handle(req, res, nextParsedUrl);
   });
 
   const nextUpgradeHandler = IS_DEV && typeof app.getUpgradeHandler === 'function'

@@ -207,26 +207,26 @@ export function WorkspaceShell() {
     }
   }, [generationClearScope, workspace]);
 
+  const isFixedViewportTab = activeTab === 'image-generation' || activeTab === 'agent';
+
   return (
     <div
       className={cn(
-        'mx-auto flex min-h-screen w-full flex-col gap-4 overflow-x-hidden px-3 py-3 transition-[max-width] duration-200 sm:gap-5 sm:px-6 sm:py-5 lg:px-8',
+        'mx-auto flex h-dvh min-h-0 w-full flex-col gap-4 overflow-hidden px-3 py-3 transition-[max-width] duration-200 sm:gap-5 sm:px-6 sm:py-5 lg:px-8',
         wideMode ? 'max-w-none xl:h-dvh xl:min-h-0 xl:gap-3 xl:py-3 xl:overflow-hidden' : 'max-w-5xl',
-        !wideMode && activeTab === 'agent' && 'h-dvh min-h-0 overflow-hidden'
+        !wideMode && isFixedViewportTab && 'h-dvh min-h-0 overflow-hidden'
       )}
     >
       <div className={cn(
-        'flex-1 bg-transparent shadow-none sm:rounded-3xl sm:bg-card/95 sm:shadow-sm sm:border sm:border-border/70',
+        'flex min-h-0 flex-1 flex-col bg-transparent shadow-none sm:rounded-3xl sm:bg-card/95 sm:shadow-sm sm:border sm:border-border/70',
         wideMode && 'flex min-h-0 flex-col',
-        !wideMode && activeTab === 'agent' && 'flex min-h-0 flex-col'
+        !wideMode && isFixedViewportTab && 'flex min-h-0 flex-col'
       )}>
         <div className={cn(
           'p-0 sm:p-5',
           wideMode
             ? 'flex h-full flex-1 flex-col min-h-0 sm:p-3'
-            : activeTab === 'agent'
-              ? 'flex h-full flex-1 flex-col min-h-0 gap-4'
-              : 'space-y-4'
+            : 'flex h-full flex-1 flex-col min-h-0 gap-4'
         )}>
           <WorkspaceHeader
             ref={headerRef}
@@ -245,9 +245,7 @@ export function WorkspaceShell() {
             className={cn(
               wideMode
                 ? 'gap-4 xl:flex-row xl:flex-1 xl:min-h-0'
-                : activeTab === 'agent'
-                  ? 'gap-2 flex flex-col flex-1 min-h-0'
-                  : 'gap-2'
+                : 'gap-2 flex flex-col flex-1 min-h-0'
             )}
           >
             <div className={cn('flex flex-col', wideMode && 'self-stretch sticky top-4 h-full xl:shrink-0')}>
@@ -346,10 +344,19 @@ export function WorkspaceShell() {
               wideMode && (activeTab === 'image-generation' || activeTab === 'agent'
                 ? 'xl:overflow-hidden'
                 : 'xl:overflow-y-auto xl:overflow-x-hidden'),
-              !wideMode && activeTab === 'agent' && 'flex flex-1 flex-col min-h-0'
+              !wideMode && 'flex flex-1 flex-col min-h-0',
+              !wideMode && (isFixedViewportTab ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden')
             )}>
-              <TabsContent value="image-generation" keepMounted className={cn(wideMode ? 'space-y-6 xl:flex xl:min-h-0 xl:space-y-0' : 'space-y-3')}>
-                <div className={cn(wideMode ? 'grid items-start gap-5 xl:h-full xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(460px,0.95fr)_minmax(0,1.35fr)] xl:items-stretch' : 'space-y-3')}>
+              <TabsContent value="image-generation" keepMounted className={cn(
+                wideMode
+                  ? 'space-y-6 xl:flex xl:min-h-0 xl:space-y-0'
+                  : 'flex min-h-0 flex-1 flex-col space-y-3 overflow-hidden'
+              )}>
+                <div className={cn(
+                  wideMode
+                    ? 'grid items-start gap-5 xl:h-full xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(460px,0.95fr)_minmax(0,1.35fr)] xl:items-stretch'
+                    : 'flex min-h-0 flex-1 flex-col space-y-3 overflow-hidden'
+                )}>
                   <div className={cn(wideMode && 'xl:h-full xl:min-h-0 xl:overflow-y-auto xl:pr-1')}>
                     <ImageGenerationWorkbench
                       wideMode={wideMode}

@@ -176,7 +176,7 @@ npm install
 cp backend/.env.example backend/.env
 # Windows: Copy-Item backend/.env.example backend/.env
 
-# 4. 启动（等同于 build 后用 production 模式跑 server.js）
+# 4. 启动开发模式（Next dev + 后端 API，同源访问，支持前端热更新）
 npm run dev
 ```
 
@@ -187,8 +187,10 @@ npm run dev
 ### 其它常用脚本
 
 ```bash
-npm run dev:frontend   # 仅启动 Next.js dev server（HMR，不走静态导出）
-npm run dev:backend    # 仅启动后端 server.js
+npm run dev            # 开发模式：后端接入 Next dev，支持前端热更新
+npm run dev:static     # 静态生产模拟：先 build，再由后端托管 frontend/out/
+npm run dev:frontend   # 仅启动 Next.js dev server（通常只用于单独调前端）
+npm run dev:backend    # 仅启动后端 server.js（通常只用于单独调后端）
 npm run build          # 构建前端静态产物到 frontend/out/
 npm start              # 直接跑后端 server.js
 npm run lint           # 前端 ESLint

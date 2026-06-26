@@ -4,8 +4,8 @@
   "private": true,
   "description": "知意图 - AI 图像生成工作台",
   "scripts": {
-    "dev": "cd frontend && npm run build && cd ../backend && cross-env NODE_ENV=production HOSTNAME=0.0.0.0 node server.js",
-    "dev:old": "cd ../backend && cross-env NODE_ENV=production node server.js",
+    "dev": "cd backend && cross-env NODE_ENV=development HOSTNAME=0.0.0.0 node server.js",
+    "dev:static": "cd frontend && npm run build && cd ../backend && cross-env NODE_ENV=production HOSTNAME=0.0.0.0 node server.js",
     "dev:frontend": "cd frontend && npm run dev",
     "dev:backend": "cd backend && npm run dev",
     "build": "cd frontend && npm run build",
