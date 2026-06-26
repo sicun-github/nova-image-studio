@@ -24,6 +24,9 @@ FROM node:20-slim AS production
 
 WORKDIR /app
 
+# 设置生产环境变量
+ENV NODE_ENV=production
+
 # 复制后端代码和依赖
 COPY backend/ ./backend/
 COPY --from=builder /app/backend/node_modules/ ./backend/node_modules/
