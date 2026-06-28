@@ -1,6 +1,6 @@
 {
   "name": "nova-image-backend",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "private": true,
   "description": "知意图后端 - 任务队列和 API 服务器",
   "scripts": {
@@ -10,13 +10,13 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.5.0",
-    "next": "^16.2.4",
     "undici": "^8.2.0",
     "ws": "^8.20.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.5.0",
-    "globals": "^17.6.0"
+    "globals": "^17.6.0",
+    "next": "^16.2.4"
   }
 }

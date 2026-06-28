@@ -215,7 +215,6 @@ export function AgentProposalCard({
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- clamp selection when maxRefs constraint changes
     setSelectedIds(prev => prev.length > maxRefs ? prev.slice(0, maxRefs) : prev);
   }, [maxRefs]);
 

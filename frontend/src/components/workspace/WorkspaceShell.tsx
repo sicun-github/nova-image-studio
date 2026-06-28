@@ -428,6 +428,7 @@ export function WorkspaceShell() {
                   onConfigureApiKey={() => setSettingsOpen(true)}
                   onError={setError}
                   showToast={showToast}
+                  showPromptGallery={promptGallery.showPromptGallery}
                 />
               </TabsContent>
 

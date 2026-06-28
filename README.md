@@ -4,7 +4,7 @@
 
 **自托管的 AI 图像生成工作台 · 自定义模型 · 多模式 · PWA · 实时任务**
 
-![Version](https://img.shields.io/badge/version-v3.1.0-blue.svg)
+![Version](https://img.shields.io/badge/version-v3.1.1-blue.svg)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org)
@@ -24,7 +24,7 @@
 - 所有配置存储在浏览器 localStorage
 - 文字模型支持 Google（generateContent）和 OpenAI（Response 协议）
 
-> 当前版本：**v3.1.0**
+> 当前版本：**v3.1.1**
 
 ## 💎 赞助商
 
@@ -155,13 +155,128 @@ zyt-image-studio/
 
 ---
 
-## 🚀 快速开始
+## 🚀 部署指南
+
+<details>
+<summary><strong>🐳 Docker Compose 部署</strong></summary>
+
+### 前置要求
+
+- Docker 20.10+
+- Docker Compose v2
+
+### 快速启动
+
+```bash
+# 1. 复制环境变量文件（如果不是从clone下来的，则自己新建并复制过来即可）
+cp backend/.env.example backend/.env
+
+# 2. 编辑 .env 按需调整配置
+
+# 3. 创建必要的配置文件（如果不存在）
+touch blacklist.json prompts.json
+
+# 4. 创建数据目录
+mkdir -p data/images
+
+# 5. 启动服务
+docker compose up -d
+```
+
+访问 <http://localhost:3000>。
+
+### 环境变量
+
+通过 `backend/.env` 注入，无需修改镜像。修改后重启生效：
+
+```bash
+docker compose restart
+```
+
+### 升级
+
+拉取最新镜像并重建容器：
+
+```bash
+docker compose down
+docker compose pull
+docker compose up -d --force-recreate
+```
+
+### 数据持久化
+
+以下目录自动挂载到 `./data/`：
+
+- `nova-images/` - 生成的图片
+- `nova-tasks.sqlite` - 任务数据库
+
+</details>
+
+<details>
+<summary><strong>📦 本地部署（生产环境）</strong></summary>
 
 ### 环境要求
 
 - **Node.js**：20 或 22
 - **npm**：自带 workspaces 支持
 - `better-sqlite3` 是原生依赖，**生产服务器必须本地 `npm ci --omit=dev`**，不要直接复制本机 `node_modules`
+
+### 部署步骤
+
+#### 1. 在构建机
+
+```bash
+npm ci
+npm run build
+```
+
+产物 `frontend/out/` 已生成。
+
+#### 2. 上传以下到生产服务器
+
+```text
+frontend/out/
+backend/server.js
+backend/package.json
+backend/package-lock.json
+backend/prompts.json
+backend/blacklist.json
+backend/.env          # 按生产环境调整
+```
+
+#### 3. 在生产服务器
+
+```bash
+npm ci --omit=dev        # 必须本地装 better-sqlite3 原生模块
+npm start                # 或 npm run server
+```
+
+`.env` 中 `NODE_ENV=production`。
+
+#### 4. 进程托管
+
+推荐 **PM2 / systemd / 平台自带进程管理**，确保：
+
+- 进程对 `NOVA_TASK_DB` 指向的 SQLite 文件有读写权限
+- 反向代理（Nginx / Caddy / 云网关）将域名转到 `http://127.0.0.1:3000`
+
+#### 5. 一键打包
+
+```bash
+npm run go
+```
+
+生成根目录 `out.zip`，解压后即可按上面 1~3 步骤部署。
+
+</details>
+
+<details>
+<summary><strong>💻 本地开发</strong></summary>
+
+### 环境要求
+
+- **Node.js**：20 或 22
+- **npm**：自带 workspaces 支持
 
 ### 安装与运行
 
@@ -184,7 +299,7 @@ npm run dev
 
 > 首次启动时需要在 UI 的"设置"中至少完成一个图片模型和一个文本模型配置，并设置默认模型。所有前端配置均保存在浏览器 localStorage，可通过备份功能导出。
 
-### 其它常用脚本
+### 常用开发脚本
 
 ```bash
 npm run dev            # 开发模式：后端接入 Next dev，支持前端热更新
@@ -198,6 +313,27 @@ npm test               # 前端 Vitest watch
 npm run test:run       # 前端 Vitest 单次
 npm run go             # 打包：build + 汇总到根 out.zip
 ```
+
+</details>
+
+<details>
+<summary><strong>🔨 Docker 镜像构建</strong></summary>
+
+### 构建镜像
+
+```bash
+docker build -t zyt-image-studio:latest .
+```
+
+### 推送到仓库
+
+```bash
+docker tag zyt-image-studio:latest your-registry/zyt-image-studio:latest
+
+docker push your-registry/zyt-image-studio:latest
+```
+
+</details>
 
 ---
 

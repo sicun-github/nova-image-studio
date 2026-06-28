@@ -51,6 +51,9 @@ import {
   getGptImageAdvancedParamsForModel,
   getSizeOptions,
   getSupportsTemperature,
+  getValidOutputSizes,
+  normalizeCustomImageSize,
+  normalizeModel,
   supportsCustomSize,
   supportsGptImageAdvancedParams,
   type GptImageAdvancedParams,
@@ -146,7 +149,7 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
   const intentRecognition = agent.intentRecognition;
 
   // ===== 用户参数状态（持久化到 localStorage）=====
-  const initialUserModel = getBaseModelId(agent.imageModel);
+  const initialUserModel = getBaseModelId(normalizeModel(agent.imageModel));
   const [paramsReady, setParamsReady] = useState(false);
   const [userModel, setUserModel] = useState<ModelId>(initialUserModel);
   const [userOutputSize, setUserOutputSize] = useState<OutputSize>('1K');
@@ -181,18 +184,32 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
   useEffect(() => {
     const savedParams = loadJsonFromStorage<AgentParamsSettings>(AGENT_PARAMS_KEY);
     const savedUserModel = savedParams.model || agent.imageModel;
-    const nextModel = getBaseModelId(savedUserModel);
+    const nextModel = getBaseModelId(normalizeModel(savedUserModel));
+    const validOutputSizes = getValidOutputSizes(nextModel);
+    const nextOutputSize: OutputSize = savedParams.outputSize && validOutputSizes.includes(savedParams.outputSize)
+      ? savedParams.outputSize
+      : validOutputSizes[0];
+    const validAspectRatios = getAspectRatioOptions(nextModel, nextOutputSize).map(option => option.value);
+    const nextAspectRatio: AspectRatio = savedParams.aspectRatio && validAspectRatios.includes(savedParams.aspectRatio)
+      ? savedParams.aspectRatio
+      : (validAspectRatios[0] || '1:1');
+    const nextTemperature = typeof savedParams.temperature === 'number' && savedParams.temperature >= 0 && savedParams.temperature <= 2
+      ? savedParams.temperature
+      : 1;
+    const nextCustomSize = supportsCustomSize(nextModel) && nextOutputSize !== 'auto'
+      ? normalizeCustomImageSize(savedParams.customSize, getCustomSizeMaxSide(nextModel))
+      : undefined;
     setUserModel(nextModel);
-    setUserOutputSize(savedParams.outputSize || '1K');
-    setUserAspectRatio(savedParams.aspectRatio || '1:1');
-    setUserTemperature(savedParams.temperature ?? 1);
+    setUserOutputSize(nextOutputSize);
+    setUserAspectRatio(nextAspectRatio);
+    setUserTemperature(nextTemperature);
     setUserAdvancedParams(getGptImageAdvancedParamsForModel(nextModel, {
       quality: savedParams.gptImageQuality,
       style: savedParams.gptImageStyle,
       background: savedParams.gptImageBackground,
     }));
-    setUserParallelCount((savedParams.parallelCount as ParallelCount) ?? 1);
-    setUserCustomSize(savedParams.customSize);
+    setUserParallelCount([1, 2, 3, 4].includes(savedParams.parallelCount as ParallelCount) ? savedParams.parallelCount as ParallelCount : 1);
+    setUserCustomSize(nextCustomSize);
     setUserTokenBilling(supportsTokenMode(nextModel) && (Boolean(savedParams.tokenBilling) || isTokenModel(savedUserModel)));
     setParamsReady(true);
   }, [agent.imageModel]);
@@ -220,6 +237,23 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
   const [aspectPopoverOpen, setAspectPopoverOpen] = useState(false);
   const [tempPopoverOpen, setTempPopoverOpen] = useState(false);
   const [parallelPopoverOpen, setParallelPopoverOpen] = useState(false);
+
+  const applyUserModel = useCallback((candidateModel: string) => {
+    const nextModel = normalizeModel(candidateModel);
+    const validSizes = getValidOutputSizes(nextModel);
+    const nextOutputSize = validSizes.includes(userOutputSize) ? userOutputSize : validSizes[0];
+    const validRatios = getAspectRatioOptions(nextModel, nextOutputSize).map(option => option.value);
+    const nextAspectRatio = validRatios.includes(userAspectRatio) ? userAspectRatio : (validRatios[0] || '1:1');
+    const nextCustomSize = supportsCustomSize(nextModel) && nextOutputSize !== 'auto'
+      ? normalizeCustomImageSize(userCustomSize, getCustomSizeMaxSide(nextModel))
+      : undefined;
+
+    setUserModel(nextModel);
+    setUserOutputSize(nextOutputSize);
+    setUserAspectRatio(nextAspectRatio as AspectRatio);
+    setUserCustomSize(nextCustomSize);
+    setUserAdvancedParams(prev => getGptImageAdvancedParamsForModel(nextModel, prev));
+  }, [userAspectRatio, userCustomSize, userOutputSize]);
 
   const imageMap = useMemo(() => new Map(agent.images.map(img => [img.imgId, img])), [agent.images]);
 

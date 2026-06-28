@@ -304,7 +304,6 @@ export function AssetsWorkspace({ wideMode = false, active = true }: AssetsWorks
     setLoading(false);
   }, []);
 
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (active) void reload();
   }, [active, reload]);
@@ -345,7 +344,6 @@ export function AssetsWorkspace({ wideMode = false, active = true }: AssetsWorks
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
   }, [debouncedQuery, selectedSource, selectedTag, sort]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   const allTags = useMemo(() => uniqueTags(assets), [assets]);
   const sources = useMemo<AssetSourceKind[]>(() => Array.from(new Set(assets.map(asset => asset.sourceKind))).sort(), [assets]);
@@ -366,7 +364,6 @@ export function AssetsWorkspace({ wideMode = false, active = true }: AssetsWorks
   const selectedSourceLabel = selectedSource ? getSourceKindLabel(selectedSource as AssetSourceKind) : '全部来源';
   const sortLabel = SORT_OPTIONS.find(option => option.value === sort)?.label || '最新添加';
 
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setSelectedAssetIds(prev => {
       const validIds = new Set(assets.map(asset => asset.id));
@@ -374,7 +371,6 @@ export function AssetsWorkspace({ wideMode = false, active = true }: AssetsWorks
       return next.size === prev.size ? prev : next;
     });
   }, [assets]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   const openPreview = useCallback(async (assetId: string) => {
     revokeFullObjectUrls();

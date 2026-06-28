@@ -1,7 +1,7 @@
 // 反推提示词的流式客户端
 // 根据模型分发：
-//   - OpenAI Response       → POST /api/nova/responses    （同源后端代理，避免 CORS）
-//   - gemini-2.5-flash      → POST /api/nova/gemini-stream（同源后端代理，避免 CORS）
+//   - OpenAI Response       → POST /api/nova/proxy/text   （同源后端代理，避免 CORS）
+//   - Google generateContent→ POST /api/nova/proxy/text   （同源后端代理，避免 CORS）
 
 import {
   REVERSE_PROMPT_TEMPLATES,
@@ -28,51 +28,6 @@ export interface StreamReverseCallbacks {
 export interface StreamReverseHandle {
   abort(): void;
   promise: Promise<void>;
-}
-
-function requestResponsesApi(
-  baseUrl: string,
-  apiKey: string,
-  body: Record<string, unknown>,
-  signal: AbortSignal,
-): Promise<Response> {
-  return fetch('/api/nova/responses', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'text/event-stream',
-    },
-    body: JSON.stringify({
-      apiKey,
-      baseUrl,
-      accept: 'text/event-stream',
-      body,
-    }),
-    signal,
-  });
-}
-
-function requestGeminiStreamGenerateContentApi(
-  baseUrl: string,
-  apiKey: string,
-  model: string,
-  body: Record<string, unknown>,
-  signal: AbortSignal,
-): Promise<Response> {
-  return fetch('/api/nova/gemini-stream', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'text/event-stream',
-    },
-    body: JSON.stringify({
-      apiKey,
-      baseUrl,
-      model,
-      body,
-    }),
-    signal,
-  });
 }
 
 /**
@@ -144,7 +99,19 @@ async function streamOpenAiResponses(
     ],
   };
 
-  const response = await requestResponsesApi(baseUrl, input.apiKey, body, signal);
+  const response = await fetch('/api/nova/proxy/text', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      protocol: 'openai',
+      baseUrl,
+      apiKey: input.apiKey,
+      model: input.model,
+      stream: true,
+      requestBody: body,
+    }),
+    signal,
+  });
 
   if (!response.ok) {
     throw await readHttpError(response);
@@ -265,7 +232,19 @@ async function streamGeminiGenerateContent(
     },
   };
 
-  const response = await requestGeminiStreamGenerateContentApi(baseUrl, input.apiKey, input.model, body, signal);
+  const response = await fetch('/api/nova/proxy/text', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      protocol: 'google',
+      baseUrl,
+      apiKey: input.apiKey,
+      model: input.model,
+      stream: true,
+      requestBody: body,
+    }),
+    signal,
+  });
 
   if (!response.ok) {
     throw await readHttpError(response);

@@ -30,29 +30,6 @@ class AgentRequestTimeoutError extends Error {
   }
 }
 
-function requestResponsesApi(
-  baseUrl: string,
-  apiKey: string,
-  body: Record<string, unknown>,
-  accept: 'application/json' | 'text/event-stream',
-  signal: AbortSignal,
-): Promise<Response> {
-  return fetch('/api/nova/responses', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: accept,
-    },
-    body: JSON.stringify({
-      apiKey,
-      baseUrl,
-      accept,
-      body,
-    }),
-    signal,
-  });
-}
-
 export interface AgentCatalogEntry {
   imgId: string;
   description: string;
@@ -245,7 +222,19 @@ async function runAgentStream(
     input: buildInputMessages(input.history),
   };
 
-  const response = await requestResponsesApi(baseUrl, input.apiKey, body, 'text/event-stream', signal);
+  const response = await fetch('/api/nova/proxy/text', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      protocol: 'openai',
+      baseUrl,
+      apiKey: input.apiKey,
+      model: input.model,
+      stream: true,
+      requestBody: body,
+    }),
+    signal,
+  });
 
   if (!response.ok) {
     throw await readHttpError(response);
@@ -397,7 +386,19 @@ async function requestImageDescription(
     ],
   };
 
-  const response = await requestResponsesApi(baseUrl, apiKey, body, 'application/json', signal);
+  const response = await fetch('/api/nova/proxy/text', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      protocol: 'openai',
+      baseUrl,
+      apiKey,
+      model,
+      stream: false,
+      requestBody: body,
+    }),
+    signal,
+  });
 
   if (!response.ok) {
     throw await readHttpError(response);
