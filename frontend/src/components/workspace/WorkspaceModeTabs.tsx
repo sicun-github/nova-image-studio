@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef } from 'react';
-import { Bot, Film, Images, LibraryBig, ScanSearch, Sparkles } from 'lucide-react';
+import { Bot, Film, Images, LibraryBig, PanelsTopLeft, ScanSearch, Sparkles } from 'lucide-react';
 import { TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface WorkspaceModeTabsProps {
@@ -16,6 +16,7 @@ const labelClass = 'max-sm:hidden max-sm:group-data-active:inline';
 const tabs = [
   { value: 'agent', icon: Bot, label: 'Agent' },
   { value: 'image-generation', icon: Sparkles, label: '生图工作台' },
+  { value: 'canvas', icon: PanelsTopLeft, label: '无限画布' },
   { value: 'gif', icon: Film, label: '动图生成' },
   { value: 'assets', icon: Images, label: '我的素材' },
   { value: 'reverse-prompt', icon: ScanSearch, label: '反推提示词' },
@@ -24,7 +25,7 @@ const tabs = [
 const galleryTab = { value: 'prompt-gallery', icon: LibraryBig, label: '提示词广场' } as const;
 
 export function WorkspaceModeTabs({ wideMode = false }: WorkspaceModeTabsProps) {
-  const gridCols = 'sm:grid-cols-6';
+  const gridCols = 'sm:grid-cols-7';
   const allTabs = [...tabs, galleryTab];
   const dragStateRef = useRef({
     pointerId: -1,

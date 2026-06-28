@@ -8,6 +8,7 @@ import { GifGenerationWorkspace } from '@/components/GifGenerationWorkspace';
 import { ReversePromptForm } from '@/components/ReversePromptForm';
 import { AgentChatWorkspace } from '@/components/agent/AgentChatWorkspace';
 import { AssetsWorkspace } from '@/components/assets/AssetsWorkspace';
+import { CanvasWorkspace } from '@/components/canvas/CanvasWorkspace';
 import { PromptGallery } from '@/components/PromptGallery';
 import { SettingsModal } from '@/components/SettingsModal';
 import { MissingApiKeyDialog } from '@/components/MissingApiKeyDialog';
@@ -45,7 +46,7 @@ import { cn } from '@/lib/utils';
 import { withBasePath } from '@/lib/base-path';
 import { BA_RANDOM_URL, BING_WALLPAPER_URL } from '@/lib/constants';
 
-type WorkspaceTab = 'image-generation' | 'gif' | 'agent' | 'assets' | 'reverse-prompt' | 'prompt-gallery';
+type WorkspaceTab = 'image-generation' | 'canvas' | 'gif' | 'agent' | 'assets' | 'reverse-prompt' | 'prompt-gallery';
 
 export function WorkspaceShell() {
   const queueStatus = useQueueStatus();
@@ -207,7 +208,7 @@ export function WorkspaceShell() {
     }
   }, [generationClearScope, workspace]);
 
-  const isFixedViewportTab = activeTab === 'image-generation' || activeTab === 'agent';
+  const isFixedViewportTab = activeTab === 'image-generation' || activeTab === 'agent' || activeTab === 'canvas';
 
   return (
     <div
@@ -341,7 +342,7 @@ export function WorkspaceShell() {
 
             <div className={cn(
               wideMode && 'xl:flex xl:flex-1 xl:min-h-0 xl:min-w-0',
-              wideMode && (activeTab === 'image-generation' || activeTab === 'agent'
+              wideMode && (activeTab === 'image-generation' || activeTab === 'agent' || activeTab === 'canvas'
                 ? 'xl:overflow-hidden'
                 : 'xl:overflow-y-auto xl:overflow-x-hidden'),
               !wideMode && 'flex flex-1 flex-col min-h-0',
@@ -404,6 +405,19 @@ export function WorkspaceShell() {
                   wideMode={wideMode}
                   disabled={!workspace.hasApiKey}
                   onConfigureApiKey={() => setSettingsOpen(true)}
+                />
+              </TabsContent>
+
+              <TabsContent
+                value="canvas"
+                keepMounted
+                className={cn('flex-1 flex flex-col min-h-0', wideMode && 'xl:flex xl:min-h-0 xl:flex-1 xl:flex-col')}
+              >
+                <CanvasWorkspace
+                  wideMode={wideMode}
+                  onConfigureApiKey={() => setSettingsOpen(true)}
+                  onEnableWideMode={toggleWideMode}
+                  showToast={showToast}
                 />
               </TabsContent>
 

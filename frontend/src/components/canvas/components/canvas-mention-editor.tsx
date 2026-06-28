@@ -66,8 +66,15 @@ function serializeNode(node: ChildNode): string {
   return el.tagName === "DIV" || el.tagName === "P" ? `\n${inner}` : inner;
 }
 
+function isEditorVisuallyEmpty(root: HTMLElement): boolean {
+  if (root.querySelector("[data-mention-id]")) return false;
+  return (root.textContent || "").replace(/\u00a0/g, "").trim().length === 0;
+}
+
 /** 编辑器 DOM → value(含 token) */
 function serializeEditor(root: HTMLElement): string {
+  if (isEditorVisuallyEmpty(root)) return "";
+
   let out = "";
   root.childNodes.forEach((node) => {
     out += serializeNode(node);
@@ -178,6 +185,7 @@ export function CanvasMentionEditor({ value, references, onChange, onSubmit, pla
     const el = editorRef.current;
     if (!el) return;
     const next = serializeEditor(el);
+    if (!next && el.innerHTML) el.innerHTML = "";
     lastValueRef.current = next;
     onChange(next);
   }, [onChange]);
